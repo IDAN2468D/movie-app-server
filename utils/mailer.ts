@@ -4,14 +4,21 @@ export const sendEmail = async (to: string, subject: string, html: string) => {
   // Use environment variables for production, or fallback to ethereal for development
   const isGmail = process.env.EMAIL_HOST === 'smtp.gmail.com';
   
+  console.log(`📧 Attempting to send email to ${to} using ${isGmail ? 'Gmail' : 'SMTP'}...`);
+
   const transporter = nodemailer.createTransport(
     isGmail 
     ? {
-        service: 'gmail',
+        host: 'smtp.gmail.com',
+        port: 587,
+        secure: false, // true for 465, false for other ports
         auth: {
           user: process.env.EMAIL_USER,
           pass: process.env.EMAIL_PASS,
         },
+        tls: {
+          rejectUnauthorized: false
+        }
       }
     : {
         host: process.env.EMAIL_HOST || 'smtp.ethereal.email',
@@ -27,33 +34,31 @@ export const sendEmail = async (to: string, subject: string, html: string) => {
       }
   );
 
-
-  // If using ethereal and no credentials provided, we can auto-generate them
-  // This is a common pattern for dev environments
   if (!process.env.EMAIL_USER) {
-    console.log('No email credentials found, skipping actual send. Log content to console.');
+    console.log('⚠️ No email credentials found in ENV. Skipping send and logging to console.');
     console.log('TO:', to);
     console.log('SUBJECT:', subject);
-    // In a real dev environment, you'd use ethereal.email's createTestAccount
     return { success: true, message: 'Dev mode: Email logged to console' };
   }
 
   try {
     // Verify connection configuration
+    console.log('🔍 Verifying mailer connection...');
     await transporter.verify();
     console.log('✅ Mailer connection verified');
 
     const info = await transporter.sendMail({
-      from: `"CineBook" <${process.env.EMAIL_FROM || 'no-reply@cinebook.com'}>`,
+      from: `"CineBook" <${process.env.EMAIL_USER}>`,
       to,
       subject,
       html,
     });
 
-    console.log('Message sent: %s', info.messageId);
+    console.log('🚀 Message sent: %s', info.messageId);
     return { success: true, messageId: info.messageId };
-  } catch (error) {
-    console.error('Error sending email:', error);
-    throw error;
+  } catch (error: any) {
+    console.error('❌ Error sending email:', error.message || error);
+    // If we're in dev, we might not want to crash the whole process but we should report it
+    throw new Error(`Email failed: ${error.message}`);
   }
 };

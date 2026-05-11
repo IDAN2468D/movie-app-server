@@ -102,9 +102,12 @@ router.post('/:id/email', authMiddleware, async (req: AuthRequest, res: Response
     );
 
     res.json({ success: true, message: 'Email sent successfully' });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ success: false, message: 'Failed to send email' });
+  } catch (error: any) {
+    console.error('Email route error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: error.message || 'Failed to send email' 
+    });
   }
 });
 
