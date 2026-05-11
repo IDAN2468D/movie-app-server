@@ -6,12 +6,12 @@ export const sendEmail = async (to: string, subject: string, html: string) => {
   
   console.log(`📧 Attempting to send email to ${to} using ${isGmail ? 'Gmail' : 'SMTP'}...`);
 
-  const transporter = nodemailer.createTransport(
-    isGmail 
+  const transportConfig: any = isGmail 
     ? {
         host: 'smtp.gmail.com',
         port: 465,
-        secure: true, // true for 465, false for other ports
+        secure: true,
+        pool: true,
         auth: {
           user: process.env.EMAIL_USER,
           pass: process.env.EMAIL_PASS,
@@ -19,8 +19,11 @@ export const sendEmail = async (to: string, subject: string, html: string) => {
         tls: {
           rejectUnauthorized: false
         },
-        connectionTimeout: 10000, // 10 seconds
-        greetingTimeout: 10000,
+        connectionTimeout: 20000,
+        greetingTimeout: 20000,
+        socketTimeout: 20000,
+        debug: true,
+        logger: true
       }
     : {
         host: process.env.EMAIL_HOST || 'smtp.ethereal.email',
@@ -33,8 +36,9 @@ export const sendEmail = async (to: string, subject: string, html: string) => {
         tls: {
           rejectUnauthorized: false
         }
-      }
-  );
+      };
+
+  const transporter = nodemailer.createTransport(transportConfig);
 
   if (!process.env.EMAIL_USER) {
     console.log('⚠️ No email credentials found in ENV. Skipping send and logging to console.');
@@ -44,11 +48,6 @@ export const sendEmail = async (to: string, subject: string, html: string) => {
   }
 
   try {
-    // Verify connection configuration
-    console.log('🔍 Verifying mailer connection...');
-    await transporter.verify();
-    console.log('✅ Mailer connection verified');
-
     const info = await transporter.sendMail({
       from: `"CineBook" <${process.env.EMAIL_USER}>`,
       to,
