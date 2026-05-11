@@ -14,9 +14,10 @@ export const sendEmail = async (to: string, subject: string, html: string) => {
   }
 
   try {
+    console.log(`📤 Sending via Resend to: ${to}`);
     const { data, error } = await resend.emails.send({
-      from: process.env.EMAIL_FROM || 'CineBook <onboarding@resend.dev>',
-      to: [to],
+      from: 'onboarding@resend.dev',
+      to: to.trim(),
       subject,
       html,
     });
