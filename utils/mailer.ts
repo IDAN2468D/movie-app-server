@@ -10,15 +10,17 @@ export const sendEmail = async (to: string, subject: string, html: string) => {
     isGmail 
     ? {
         host: 'smtp.gmail.com',
-        port: 587,
-        secure: false, // true for 465, false for other ports
+        port: 465,
+        secure: true, // true for 465, false for other ports
         auth: {
           user: process.env.EMAIL_USER,
           pass: process.env.EMAIL_PASS,
         },
         tls: {
           rejectUnauthorized: false
-        }
+        },
+        connectionTimeout: 10000, // 10 seconds
+        greetingTimeout: 10000,
       }
     : {
         host: process.env.EMAIL_HOST || 'smtp.ethereal.email',
