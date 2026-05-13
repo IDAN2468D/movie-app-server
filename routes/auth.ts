@@ -74,26 +74,43 @@ router.post('/google', async (req: Request, res: Response) => {
 
     // Verify Google Token
     const googleClientId = process.env.GOOGLE_CLIENT_ID;
+    console.log('[Auth] Google Auth Attempt');
+    console.log(`[Auth] Client ID (last 4): ...${googleClientId?.slice(-4)}`);
+    
     if (!googleClientId) {
+      console.error('[Auth] CRITICAL: GOOGLE_CLIENT_ID is missing from environment variables');
       throw new Error('GOOGLE_CLIENT_ID is not defined in environment variables');
     }
 
-    const ticket = await client.verifyIdToken({
-      idToken: idToken,
-      audience: googleClientId,
-    });
+    let ticket;
+    try {
+      ticket = await client.verifyIdToken({
+        idToken: idToken,
+        audience: googleClientId,
+      });
+    } catch (verifyError: any) {
+      console.error('[Auth] Token Verification Failed:', verifyError.message);
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Google token verification failed', 
+        error: verifyError.message 
+      });
+    }
 
     const payload = ticket.getPayload();
     if (!payload || !payload.email) {
+      console.error('[Auth] Invalid Token Payload:', payload);
       return res.status(400).json({ success: false, message: 'Invalid Google Token payload' });
     }
 
     const { email, name, sub: googleId, picture } = payload;
+    console.log(`[Auth] User Authenticated: ${email}`);
 
     // Find or Create User
     let user = await User.findOne({ email });
 
     if (!user) {
+      console.log(`[Auth] Creating new user for: ${email}`);
       // Create new user if doesn't exist
       // We generate a random password since they use Google
       const randomPassword = Math.random().toString(36).slice(-10);
@@ -124,9 +141,13 @@ router.post('/google', async (req: Request, res: Response) => {
         },
       },
     });
-  } catch (error) {
-    console.error('Google Auth Error:', error);
-    res.status(500).json({ success: false, message: 'Google authentication failed' });
+  } catch (error: any) {
+    console.error('Google Auth Critical Error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Google authentication failed',
+      error: error.message 
+    });
   }
 });
 
