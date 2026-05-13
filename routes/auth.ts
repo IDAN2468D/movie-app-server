@@ -84,6 +84,7 @@ router.post('/google', async (req: Request, res: Response) => {
 
     let ticket;
     try {
+      console.log(`[Auth] Verifying token with audience: ${googleClientId}`);
       ticket = await client.verifyIdToken({
         idToken: idToken,
         audience: googleClientId,
@@ -93,7 +94,11 @@ router.post('/google', async (req: Request, res: Response) => {
       return res.status(401).json({ 
         success: false, 
         message: 'Google token verification failed', 
-        error: verifyError.message 
+        error: verifyError.message,
+        debug: {
+          expectedAudience: googleClientId,
+          receivedTokenStart: idToken.substring(0, 10) + '...'
+        }
       });
     }
 
