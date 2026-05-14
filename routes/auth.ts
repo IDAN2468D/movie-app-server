@@ -51,6 +51,7 @@ router.post('/register', async (req: Request, res: Response) => {
           email: user.email,
           profileImage: user.profileImage,
           watchlist: user.watchlist,
+          paymentMethods: user.paymentMethods,
         },
       },
     });
@@ -143,6 +144,7 @@ router.post('/google', async (req: Request, res: Response) => {
           email: user.email,
           profileImage: user.profileImage,
           watchlist: user.watchlist,
+          paymentMethods: user.paymentMethods,
         },
       },
     });
@@ -185,6 +187,7 @@ router.post('/login', async (req: Request, res: Response) => {
           email: user.email,
           profileImage: user.profileImage,
           watchlist: user.watchlist,
+          paymentMethods: user.paymentMethods,
         },
       },
     });
@@ -242,6 +245,7 @@ router.get('/me', authMiddleware, async (req: AuthRequest, res: Response) => {
         email: user.email,
         profileImage: user.profileImage,
         watchlist: user.watchlist,
+        paymentMethods: user.paymentMethods,
       },
     });
   } catch (error) {

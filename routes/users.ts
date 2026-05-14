@@ -39,6 +39,10 @@ router.post('/payment-methods', authMiddleware, async (req: AuthRequest, res: Re
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
+    if (!user.paymentMethods) {
+      user.paymentMethods = [];
+    }
+
     const newMethod = {
       id: crypto.randomUUID(),
       ...validatedData,
