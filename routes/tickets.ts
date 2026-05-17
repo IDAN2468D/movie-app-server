@@ -8,6 +8,14 @@ import { getTicketEmailTemplate } from '../utils/emailTemplate';
 
 const router = express.Router();
 
+const snackSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  price: z.number(),
+  quantity: z.number(),
+  image: z.string(),
+});
+
 const ticketSchema = z.object({
   movieId: z.number(),
   movieTitle: z.string(),
@@ -25,6 +33,7 @@ const ticketSchema = z.object({
       type: z.string(),
     })
   ),
+  snacks: z.array(snackSchema).optional(),
   totalPrice: z.number(),
 });
 
@@ -40,6 +49,74 @@ router.post('/', authMiddleware, async (req: AuthRequest, res: Response) => {
     });
 
     await newTicket.save();
+
+    // Loyalty Points calculations
+    const seatsCount = validatedData.seats.length;
+    const snacksCount = validatedData.snacks ? validatedData.snacks.reduce((acc, curr) => acc + curr.quantity, 0) : 0;
+    const pointsAwarded = (seatsCount * 50) + (snacksCount * 15);
+
+    if (pointsAwarded > 0) {
+      const user = await User.findById(req.userId!);
+      if (user) {
+        user.loyaltyPoints = (user.loyaltyPoints || 0) + pointsAwarded;
+        
+        user.loyaltyActivity.push({
+          action: `רכישת כרטיסים/נשנושים - ${validatedData.movieTitle}`,
+          points: `+${pointsAwarded}`,
+          date: new Date(),
+        });
+
+        const newTrophies: string[] = [...(user.loyaltyTrophies || [])];
+        const previousTicketsCount = await Ticket.countDocuments({ user: req.userId! });
+        // Since we just saved newTicket, previousTicketsCount already includes the current ticket!
+        const currentTicketsCount = previousTicketsCount;
+
+        // 1. "צופה מתחיל" - first ticket
+        if (currentTicketsCount >= 1 && !newTrophies.includes('צופה מתחיל')) {
+          newTrophies.push('צופה מתחיל');
+          user.loyaltyActivity.push({
+            action: 'הישג חדש: צופה מתחיל 🏆',
+            points: '+0',
+            date: new Date(),
+          });
+        }
+
+        // 2. "מנשנש מקצועי" - bought snacks in this ticket or previously
+        const hasBoughtSnacksNow = snacksCount >= 1;
+        const previouslyBoughtSnacks = await Ticket.findOne({ user: req.userId!, 'snacks.0': { $exists: true } });
+        if ((hasBoughtSnacksNow || previouslyBoughtSnacks) && !newTrophies.includes('מנשנש מקצועי')) {
+          newTrophies.push('מנשנש מקצועי');
+          user.loyaltyActivity.push({
+            action: 'הישג חדש: מנשנש מקצועי 🏆',
+            points: '+0',
+            date: new Date(),
+          });
+        }
+
+        // 3. "חבר זהב" - user has >= 300 points
+        if (user.loyaltyPoints >= 300 && !newTrophies.includes('חבר זהב')) {
+          newTrophies.push('חבר זהב');
+          user.loyaltyActivity.push({
+            action: 'הישג חדש: חבר זהב 🏆',
+            points: '+0',
+            date: new Date(),
+          });
+        }
+
+        // 4. "מאסטר קולנוע" - >= 3 tickets or has >= 500 points
+        if ((currentTicketsCount >= 3 || user.loyaltyPoints >= 500) && !newTrophies.includes('מאסטר קולנוע')) {
+          newTrophies.push('מאסטר קולנוע');
+          user.loyaltyActivity.push({
+            action: 'הישג חדש: מאסטר קולנוע 🏆',
+            points: '+0',
+            date: new Date(),
+          });
+        }
+
+        user.loyaltyTrophies = newTrophies;
+        await user.save();
+      }
+    }
 
     res.status(201).json({
       success: true,

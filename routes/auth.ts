@@ -36,7 +36,20 @@ router.post('/register', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: 'User already exists' });
     }
 
-    user = new User({ name, email, password });
+    user = new User({
+      name,
+      email,
+      password,
+      loyaltyPoints: 100,
+      loyaltyTrophies: [],
+      loyaltyActivity: [
+        {
+          action: 'בונוס הצטרפות',
+          points: '+100',
+          date: new Date()
+        }
+      ]
+    });
     await user.save();
 
     const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
@@ -52,6 +65,9 @@ router.post('/register', async (req: Request, res: Response) => {
           profileImage: user.profileImage,
           watchlist: user.watchlist,
           paymentMethods: user.paymentMethods,
+          loyaltyPoints: user.loyaltyPoints,
+          loyaltyTrophies: user.loyaltyTrophies,
+          loyaltyActivity: user.loyaltyActivity,
         },
       },
     });
@@ -125,6 +141,15 @@ router.post('/google', async (req: Request, res: Response) => {
         email,
         password: randomPassword,
         profileImage: picture,
+        loyaltyPoints: 100,
+        loyaltyTrophies: [],
+        loyaltyActivity: [
+          {
+            action: 'בונוס הצטרפות',
+            points: '+100',
+            date: new Date()
+          }
+        ]
       });
       await user.save();
     } else if (picture && user.profileImage !== picture) {
@@ -145,6 +170,9 @@ router.post('/google', async (req: Request, res: Response) => {
           profileImage: user.profileImage,
           watchlist: user.watchlist,
           paymentMethods: user.paymentMethods,
+          loyaltyPoints: user.loyaltyPoints,
+          loyaltyTrophies: user.loyaltyTrophies,
+          loyaltyActivity: user.loyaltyActivity,
         },
       },
     });
@@ -188,6 +216,9 @@ router.post('/login', async (req: Request, res: Response) => {
           profileImage: user.profileImage,
           watchlist: user.watchlist,
           paymentMethods: user.paymentMethods,
+          loyaltyPoints: user.loyaltyPoints,
+          loyaltyTrophies: user.loyaltyTrophies,
+          loyaltyActivity: user.loyaltyActivity,
         },
       },
     });
@@ -246,6 +277,9 @@ router.get('/me', authMiddleware, async (req: AuthRequest, res: Response) => {
         profileImage: user.profileImage,
         watchlist: user.watchlist,
         paymentMethods: user.paymentMethods,
+        loyaltyPoints: user.loyaltyPoints,
+        loyaltyTrophies: user.loyaltyTrophies,
+        loyaltyActivity: user.loyaltyActivity,
       },
     });
   } catch (error) {

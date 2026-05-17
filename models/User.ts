@@ -9,6 +9,12 @@ export interface IPaymentMethod {
   holderName: string;
 }
 
+export interface ILoyaltyActivity {
+  action: string;
+  points: string;
+  date: Date;
+}
+
 export interface IUser extends Document {
   name: string;
   email: string;
@@ -16,6 +22,9 @@ export interface IUser extends Document {
   profileImage?: string;
   watchlist: number[];
   paymentMethods: IPaymentMethod[];
+  loyaltyPoints: number;
+  loyaltyTrophies: string[];
+  loyaltyActivity: ILoyaltyActivity[];
   createdAt: Date;
   updatedAt: Date;
   comparePassword: (password: string) => Promise<boolean>;
@@ -35,6 +44,15 @@ const UserSchema: Schema = new Schema(
         brand: { type: String, required: true },
         expiryDate: { type: String, required: true },
         holderName: { type: String, required: true },
+      },
+    ],
+    loyaltyPoints: { type: Number, default: 0 },
+    loyaltyTrophies: { type: [String], default: [] },
+    loyaltyActivity: [
+      {
+        action: { type: String, required: true },
+        points: { type: String, required: true },
+        date: { type: Date, default: Date.now },
       },
     ],
   },

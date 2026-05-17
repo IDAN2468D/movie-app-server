@@ -80,4 +80,49 @@ router.delete('/payment-methods/:id', authMiddleware, async (req: AuthRequest, r
   }
 });
 
+const redeemSchema = z.object({
+  rewardTitle: z.string(),
+  points: z.number(),
+});
+
+// @route   POST api/users/loyalty/redeem
+// @desc    Redeem loyalty points for a reward
+router.post('/loyalty/redeem', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const validatedData = redeemSchema.parse(req.body);
+    const user = await User.findById(req.userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    if ((user.loyaltyPoints || 0) < validatedData.points) {
+      return res.status(400).json({ success: false, message: 'אין מספיק נקודות מועדון' });
+    }
+
+    user.loyaltyPoints -= validatedData.points;
+    user.loyaltyActivity.push({
+      action: `מימוש הטבה: ${validatedData.rewardTitle}`,
+      points: `-${validatedData.points}`,
+      date: new Date(),
+    });
+
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'ההטבה מומשה בהצלחה!',
+      data: {
+        loyaltyPoints: user.loyaltyPoints,
+        loyaltyActivity: user.loyaltyActivity,
+      }
+    });
+  } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ success: false, errors: error.issues });
+    }
+    console.error(error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
 export default router;
