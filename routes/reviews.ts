@@ -17,7 +17,7 @@ const reviewCreateSchema = z.object({
 // @desc    Get all reviews for a movie along with rating aggregate statistics
 router.get('/movie/:movieId', async (req, res: Response) => {
   try {
-    const movieId = parseInt(req.params.movieId);
+    const movieId = parseInt(req.params.movieId as string);
     if (isNaN(movieId)) {
       return res.status(400).json({ success: false, message: 'Invalid movie ID' });
     }
@@ -57,27 +57,32 @@ router.get('/movie/:movieId', async (req, res: Response) => {
 // @desc    Create a new review for a movie
 router.post('/movie/:movieId', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
-    const movieId = parseInt(req.params.movieId);
+    const movieId = parseInt(req.params.movieId as string);
     if (isNaN(movieId)) {
       return res.status(400).json({ success: false, message: 'Invalid movie ID' });
     }
 
+    if (!req.userId) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+    const userId = req.userId as string;
+
     const validatedData = reviewCreateSchema.parse(req.body);
 
-    const user = await User.findById(req.userId);
+    const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
     // Check if the user has already reviewed this movie
-    const existingReview = await Review.findOne({ movieId, userId: req.userId });
+    const existingReview = await Review.findOne({ movieId, userId });
     if (existingReview) {
       return res.status(400).json({ success: false, message: 'כבר כתבת ביקורת לסרט זה!' });
     }
 
     const newReview = new Review({
       movieId,
-      userId: req.userId!,
+      userId,
       userName: user.name,
       userProfileImage: user.profileImage || '',
       rating: validatedData.rating,
@@ -98,7 +103,7 @@ router.post('/movie/:movieId', authMiddleware, async (req: AuthRequest, res: Res
     });
 
     // Check for a new achievement "מבקר קולנוע" if they've reviewed their first movie!
-    const reviewCount = await Review.countDocuments({ userId: req.userId });
+    const reviewCount = await Review.countDocuments({ userId });
     const newTrophies = [...(user.loyaltyTrophies || [])];
     if (reviewCount >= 1 && !newTrophies.includes('מבקר קולנוע')) {
       newTrophies.push('מבקר קולנוע');
