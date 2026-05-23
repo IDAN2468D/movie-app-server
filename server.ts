@@ -8,6 +8,7 @@ import authRoutes from './routes/auth';
 import ticketRoutes from './routes/tickets';
 import userRoutes from './routes/users';
 import reviewRoutes from './routes/reviews';
+import snackRoutes from './routes/snacks';
 
 console.log('📧 Email Config:', process.env.EMAIL_USER ? `Loaded (${process.env.EMAIL_USER})` : 'Not loaded');
 
@@ -32,6 +33,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/tickets', ticketRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/reviews', reviewRoutes);
+app.use('/api/snacks', snackRoutes);
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
