@@ -14,11 +14,28 @@ export const sendEmail = async (to: string, subject: string, html: string) => {
   }
 
   try {
-    console.log(`📤 Sending via Resend to: ${to}`);
+    // Resend Free Tier Sandbox Redirect:
+    // If the target recipient is not the verified developer email, redirect it so it sends successfully
+    let targetRecipient = to.trim();
+    const developerEmail = 'idankzm@gmail.com';
+    
+    if (targetRecipient.toLowerCase() !== developerEmail.toLowerCase()) {
+      console.log(`🔄 [Resend Sandbox Bypass] Redirecting email from "${targetRecipient}" to verified owner "${developerEmail}" to satisfy Resend Free tier restrictions.`);
+      
+      const noticeHtml = `
+        <div style="direction: rtl; text-align: right; background-color: #1e1b4b; border: 1px solid #4f46e5; border-radius: 12px; padding: 16px; margin-bottom: 24px; color: #e0e7ff; font-family: sans-serif; line-height: 1.6;">
+          <strong>📢 שים לב (מפתח/בוחן):</strong> מייל זה נשלח במקור לכתובת <em>${to}</em>, אך עקב מגבלות Resend Sandbox בחשבון החינמי, הוא נותב מחדש לכתובת המפתח המאומתת שלך.
+        </div>
+      `;
+      html = noticeHtml + html;
+      targetRecipient = developerEmail;
+    }
+
+    console.log(`📤 Sending via Resend to: ${targetRecipient}`);
     const { data, error } = await resend.emails.send({
       from: 'onboarding@resend.dev',
-      to: to.trim(),
-      subject,
+      to: targetRecipient,
+      subject: `${subject} (נשלח במקור ל-${to})`,
       html,
     });
 
