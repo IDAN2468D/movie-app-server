@@ -19,6 +19,7 @@ const snackSchema = z.object({
 const ticketSchema = z.object({
   movieId: z.number(),
   movieTitle: z.string(),
+  moviePoster: z.string().optional(),
   date: z.string(),
   showtime: z.object({
     time: z.string(),

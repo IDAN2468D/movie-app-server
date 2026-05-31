@@ -12,6 +12,7 @@ export interface ITicket extends Document {
   user: mongoose.Types.ObjectId;
   movieId: number;
   movieTitle: string;
+  moviePoster?: string;
   date: string;
   showtime: {
     time: string;
@@ -33,6 +34,7 @@ const TicketSchema: Schema = new Schema({
   user: { type: Schema.Types.ObjectId, ref: 'User', required: true },
   movieId: { type: Number, required: true },
   movieTitle: { type: String, required: true },
+  moviePoster: { type: String },
   date: { type: String, required: true },
   showtime: {
     time: { type: String, required: true },
