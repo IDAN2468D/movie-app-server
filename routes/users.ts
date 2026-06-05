@@ -125,4 +125,45 @@ router.post('/loyalty/redeem', authMiddleware, async (req: AuthRequest, res: Res
   }
 });
 
+const addPointsSchema = z.object({
+  action: z.string(),
+  points: z.number(),
+});
+
+// @route   POST api/users/loyalty/add
+// @desc    Add loyalty points for an action (e.g. Trivia Challenge)
+router.post('/loyalty/add', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const validatedData = addPointsSchema.parse(req.body);
+    const user = await User.findById(req.userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    user.loyaltyPoints = (user.loyaltyPoints || 0) + validatedData.points;
+    user.loyaltyActivity.push({
+      action: validatedData.action,
+      points: `+${validatedData.points}`,
+      date: new Date(),
+    });
+
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'נקודות המועדון עודכנו בהצלחה!',
+      data: {
+        loyaltyPoints: user.loyaltyPoints,
+        loyaltyActivity: user.loyaltyActivity,
+      }
+    });
+  } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ success: false, errors: error.issues });
+    }
+    console.error(error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
 export default router;
