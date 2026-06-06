@@ -9,12 +9,25 @@ import ticketRoutes from './routes/tickets';
 import userRoutes from './routes/users';
 import reviewRoutes from './routes/reviews';
 import snackRoutes from './routes/snacks';
+import squadRoutes from './routes/squad';
+import http from 'http';
+import { Server } from 'socket.io';
+import { setupSquadSockets } from './sockets/squadSocket';
 
 console.log('📧 Email Config:', process.env.EMAIL_USER ? `Loaded (${process.env.EMAIL_USER})` : 'Not loaded');
 
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST']
+  }
+});
+setupSquadSockets(io);
 
 // Middleware
 app.use(cors());
@@ -34,6 +47,7 @@ app.use('/api/tickets', ticketRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/snacks', snackRoutes);
+app.use('/api/squad', squadRoutes);
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -61,7 +75,7 @@ mongoose
   .connect(MONGODB_URI)
   .then(() => {
     console.log('✅ Connected to MongoDB');
-    app.listen(PORT, () => {
+    server.listen(PORT, () => {
       console.log(`🚀 Server running on http://localhost:${PORT}`);
     });
   })

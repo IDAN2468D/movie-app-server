@@ -25,6 +25,7 @@
     "mongoose": "^9.6.2",
     "nodemailer": "^8.0.7",
     "resend": "^6.12.3",
+    "socket.io": "^4.8.3",
     "zod": "^4.4.3"
   },
   "devDependencies": {
@@ -35,6 +36,7 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/mongoose": "^5.11.96",
     "@types/node": "^25.6.2",
+    "@types/socket.io": "^3.0.1",
     "@types/supertest": "^7.2.0",
     "jest": "^30.4.2",
     "supertest": "^7.2.2",
