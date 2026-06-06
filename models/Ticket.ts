@@ -28,6 +28,11 @@ export interface ITicket extends Document {
   snacks?: ISnackItem[];
   totalPrice: number;
   bookingDate: Date;
+  theme?: {
+    primaryColor: string;
+    secondaryColor: string;
+    genre: string;
+  };
 }
 
 const TicketSchema: Schema = new Schema({
@@ -55,7 +60,12 @@ const TicketSchema: Schema = new Schema({
     image: { type: String },
   }],
   totalPrice: { type: Number, required: true },
-  bookingDate: { type: Date, default: Date.now }
+  bookingDate: { type: Date, default: Date.now },
+  theme: {
+    primaryColor: { type: String },
+    secondaryColor: { type: String },
+    genre: { type: String },
+  }
 });
 
 export default mongoose.model<ITicket>('Ticket', TicketSchema);

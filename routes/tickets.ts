@@ -38,15 +38,54 @@ const ticketSchema = z.object({
   totalPrice: z.number(),
 });
 
+// Helper: get movie theme based on title keywords
+function getMovieTheme(title: string) {
+  const t = title.toLowerCase();
+  if (t.includes('מואנה') || t.includes('moana') || t.includes('comedy') || t.includes('אנימציה') || t.includes('קומדיה')) {
+    return {
+      primaryColor: '#FFE500', // Neon Yellow
+      secondaryColor: '#00E5FF', // Electric Blue
+      genre: 'comedy'
+    };
+  } else if (t.includes('דדפול') || t.includes('deadpool') || t.includes('גלדיאטור') || t.includes('gladiator') || t.includes('אקשן') || t.includes('action')) {
+    return {
+      primaryColor: '#FF1464', // Neon Crimson
+      secondaryColor: '#FF8A00', // Orange Glow
+      genre: 'action'
+    };
+  } else if (t.includes('רשע') || t.includes('wicked') || t.includes('מכשפה')) {
+    return {
+      primaryColor: '#D500F9', // Deep Purple
+      secondaryColor: '#00E676', // Witch Green
+      genre: 'sci-fi'
+    };
+  } else if (t.includes('אימה') || t.includes('horror') || t.includes('מתח') || t.includes('thriller')) {
+    return {
+      primaryColor: '#900C3F', // Crimson
+      secondaryColor: '#1A1A1D', // Dark Slate
+      genre: 'horror'
+    };
+  } else {
+    // Default Drama/Rose theme
+    return {
+      primaryColor: '#FF1464', // Rose Pink
+      secondaryColor: '#FFB300', // Gold Accent
+      genre: 'drama'
+    };
+  }
+}
+
 // @route   POST api/tickets
 // @desc    Create a new ticket
 router.post('/', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
     const validatedData = ticketSchema.parse(req.body);
+    const resolvedTheme = getMovieTheme(validatedData.movieTitle);
     
     const newTicket = new Ticket({
       user: req.userId!,
-      ...validatedData
+      ...validatedData,
+      theme: resolvedTheme
     });
 
     await newTicket.save();
