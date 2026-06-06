@@ -10,6 +10,7 @@ import userRoutes from './routes/users';
 import reviewRoutes from './routes/reviews';
 import snackRoutes from './routes/snacks';
 import squadRoutes from './routes/squad';
+import cinemaRoutes from './routes/cinema';
 import http from 'http';
 import { Server } from 'socket.io';
 import { setupSquadSockets } from './sockets/squadSocket';
@@ -48,6 +49,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/snacks', snackRoutes);
 app.use('/api/squad', squadRoutes);
+app.use('/api/cinema', cinemaRoutes);
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
