@@ -28,6 +28,8 @@ export interface ITicket extends Document {
   snacks?: ISnackItem[];
   totalPrice: number;
   bookingDate: Date;
+  deliveryMode?: 'immediate' | 'pre-sync';
+  targetDeliveryTime?: Date;
   theme?: {
     primaryColor: string;
     secondaryColor: string;
@@ -61,6 +63,8 @@ const TicketSchema: Schema = new Schema({
   }],
   totalPrice: { type: Number, required: true },
   bookingDate: { type: Date, default: Date.now },
+  deliveryMode: { type: String, enum: ['immediate', 'pre-sync'], default: 'immediate' },
+  targetDeliveryTime: { type: Date },
   theme: {
     primaryColor: { type: String },
     secondaryColor: { type: String },

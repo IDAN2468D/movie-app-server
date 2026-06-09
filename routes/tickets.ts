@@ -1,6 +1,7 @@
-import express, { Response } from 'express';
+import express, { Request, Response } from 'express';
 import { z } from 'zod';
 import Ticket from '../models/Ticket';
+import Collectible from '../models/Collectible';
 import User from '../models/User';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { sendEmail } from '../utils/mailer';
@@ -36,6 +37,8 @@ const ticketSchema = z.object({
   ),
   snacks: z.array(snackSchema).optional(),
   totalPrice: z.number(),
+  deliveryMode: z.enum(['immediate', 'pre-sync']).optional().default('immediate'),
+  targetDeliveryTime: z.string().or(z.date()).optional(),
 });
 
 // Helper: get movie theme based on title keywords
@@ -90,10 +93,36 @@ router.post('/', authMiddleware, async (req: AuthRequest, res: Response) => {
 
     await newTicket.save();
 
-    // Loyalty Points calculations
+    // Create a new collectible badge in user's CineVault
     const seatsCount = validatedData.seats.length;
+    const genre = resolvedTheme.genre || 'drama';
+    let badgeType: 'bronze' | 'silver' | 'gold' | 'glass' = 'bronze';
+    const hasVip = validatedData.seats.some((s: any) => s.type.toLowerCase().includes('vip') || s.type.includes('ויפ') || s.type.includes('פרמיום'));
+    if (hasVip) {
+      badgeType = 'glass';
+    } else if (seatsCount >= 3) {
+      badgeType = 'gold';
+    } else if (seatsCount === 2) {
+      badgeType = 'silver';
+    }
+    const randomSuffix = Math.floor(100 + Math.random() * 900);
+    const shardId = `shard_${genre}_${badgeType}_${randomSuffix}`;
+
+    const newCollectible = new Collectible({
+      user: req.userId!,
+      movieId: validatedData.movieId,
+      movieTitle: validatedData.movieTitle,
+      moviePoster: validatedData.moviePoster,
+      genre,
+      badgeType,
+      shardId,
+      earnedAt: new Date()
+    });
+    await newCollectible.save();
+
+    // Loyalty Points calculations
     const snacksCount = validatedData.snacks ? validatedData.snacks.reduce((acc, curr) => acc + curr.quantity, 0) : 0;
-    const pointsAwarded = (seatsCount * 50) + (snacksCount * 15);
+    const pointsAwarded = (seatsCount * 50) + (snacksCount * 15) + 50; // Earn extra 50 points for the new collectible shard!
 
     if (pointsAwarded > 0) {
       const user = await User.findById(req.userId!);
@@ -102,7 +131,13 @@ router.post('/', authMiddleware, async (req: AuthRequest, res: Response) => {
         
         user.loyaltyActivity.push({
           action: `רכישת כרטיסים/נשנושים - ${validatedData.movieTitle}`,
-          points: `+${pointsAwarded}`,
+          points: `+${pointsAwarded - 50}`,
+          date: new Date(),
+        });
+
+        user.loyaltyActivity.push({
+          action: `גביש זכוכית חדש ב-CineVault (${validatedData.movieTitle}) 🏆`,
+          points: `+50`,
           date: new Date(),
         });
 
@@ -225,6 +260,39 @@ router.post('/:id/email', authMiddleware, async (req: AuthRequest, res: Response
       success: false, 
       message: error.message || 'Failed to send email' 
     });
+  }
+});
+
+// @route   GET api/tickets/:id/wallet/pass
+// @desc    Generate and serve Apple Wallet / Google Wallet pass file
+router.get('/:id/wallet/pass', async (req: Request, res: Response) => {
+  try {
+    const ticketId = req.params.id;
+    const ticket = await Ticket.findById(ticketId);
+    
+    if (!ticket) {
+      return res.status(404).send('Ticket not found');
+    }
+
+    res.setHeader('Content-Type', 'application/vnd.apple.pkpass');
+    res.setHeader('Content-Disposition', `attachment; filename="ticket_${ticketId}.pkpass"`);
+
+    console.log(`[Wallet] Serving pkpass file stream for movie: ${ticket.movieTitle}`);
+    
+    const mockPassBuffer = Buffer.from('PKPASS_MOCK_DATA_' + JSON.stringify({
+      serialNumber: ticket._id.toString(),
+      logoText: "CineBook",
+      movieTitle: ticket.movieTitle,
+      showtime: ticket.showtime.time,
+      hall: ticket.showtime.hall,
+      seats: ticket.seats.map(s => `${s.row}-${s.number}`).join(', '),
+      barcode: ticket._id.toString()
+    }));
+    
+    res.send(mockPassBuffer);
+  } catch (error) {
+    console.error('Error generating pass:', error);
+    res.status(500).send('Error generating ticket pass');
   }
 });
 

@@ -11,9 +11,11 @@ import reviewRoutes from './routes/reviews';
 import snackRoutes from './routes/snacks';
 import squadRoutes from './routes/squad';
 import cinemaRoutes from './routes/cinema';
+import vaultRoutes from './routes/vault';
 import http from 'http';
 import { Server } from 'socket.io';
 import { setupSquadSockets } from './sockets/squadSocket';
+import { setupLoungeSockets } from './sockets/loungeSocket';
 
 console.log('📧 Email Config:', process.env.EMAIL_USER ? `Loaded (${process.env.EMAIL_USER})` : 'Not loaded');
 
@@ -29,6 +31,7 @@ const io = new Server(server, {
   }
 });
 setupSquadSockets(io);
+setupLoungeSockets(io);
 
 // Middleware
 app.use(cors());
@@ -50,6 +53,7 @@ app.use('/api/reviews', reviewRoutes);
 app.use('/api/snacks', snackRoutes);
 app.use('/api/squad', squadRoutes);
 app.use('/api/cinema', cinemaRoutes);
+app.use('/api/vault', vaultRoutes);
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
