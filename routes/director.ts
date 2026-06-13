@@ -22,18 +22,21 @@ function generateLocalScriptFallback(movieTitle: string, prompt: string, castLis
   const cleanPrompt = prompt.replace(/[?.!]/g, '').trim();
 
   let scene1Visual = `סצנת פתיחה קולנועית מתוך ${movieTitle}. ההתרחשות מתחילה בהשראת הרעיון: "${cleanPrompt}".`;
+  let scene1VisualEnglish = `Cinematic opening scene of ${movieTitle}, inspired by: ${cleanPrompt}`;
   let scene1Dialogue = `${actor1}: "איך הגענו למצב הזה? הכל קורה כל כך מהר."`;
 
   let scene2Visual = `המצב מסתבך מחוץ לגבולות המוכרים. ${actor2} נכנס לתמונה עם תפנית דרמטית בהשראת "${cleanPrompt}".`;
+  let scene2VisualEnglish = `Things get complicated out of bounds. ${actor2} enters with a dramatic twist.`;
   let scene2Dialogue = `${actor2}: "אם חשבת שתוכל לברוח מזה, טעית בגדול."`;
 
   let scene3Visual = `ההכרעה הסופית של העלילה. ${actor3} מנסה להציל את המצב ברגע האחרון.`;
+  let scene3VisualEnglish = `The final resolution of the plot. ${actor3} tries to save the day at the last second.`;
   let scene3Dialogue = `${actor3}: "זה הרגע שלנו לפעול, אין לנו הזדמנות שנייה!"`;
 
   return [
-    { sceneNumber: 1, visualPrompt: scene1Visual, dialogue: scene1Dialogue },
-    { sceneNumber: 2, visualPrompt: scene2Visual, dialogue: scene2Dialogue },
-    { sceneNumber: 3, visualPrompt: scene3Visual, dialogue: scene3Dialogue },
+    { sceneNumber: 1, visualPrompt: scene1Visual, visualPromptEnglish: scene1VisualEnglish, dialogue: scene1Dialogue },
+    { sceneNumber: 2, visualPrompt: scene2Visual, visualPromptEnglish: scene2VisualEnglish, dialogue: scene2Dialogue },
+    { sceneNumber: 3, visualPrompt: scene3Visual, visualPromptEnglish: scene3VisualEnglish, dialogue: scene3Dialogue },
   ];
 }
 
@@ -65,21 +68,24 @@ router.post('/pitch', authMiddleware, async (req: AuthRequest, res: Response) =>
     {
       "sceneNumber": 1,
       "visualPrompt": "תיאור ויזואלי מפורט של הסצנה עבור הבמאי/צייר בעברית (עד 15 מילים)",
+      "visualPromptEnglish": "Detailed English image generation prompt for this scene (up to 15 words, must be in English, e.g. 'cinematic sword fight in ancient city, dramatic lighting')",
       "dialogue": "שורת דיאלוג דרמטית בעברית המיוחסת לאחד מהשחקנים שלוהקו (למשל, ${actor1}: 'שלום עולם')"
     },
     {
       "sceneNumber": 2,
       "visualPrompt": "תיאור ויזואלי של הסצנה השנייה בעברית (עד 15 מילים)",
+      "visualPromptEnglish": "Detailed English image generation prompt for this scene (up to 15 words, must be in English)",
       "dialogue": "שורת דיאלוג של שחקן אחר (למשל, ${actor2}: 'אני כאן')"
     },
     {
       "sceneNumber": 3,
       "visualPrompt": "תיאור ויזואלי של הסצנה השלישית בעברית (עד 15 מילים)",
+      "visualPromptEnglish": "Detailed English image generation prompt for this scene (up to 15 words, must be in English)",
       "dialogue": "שורת דיאלוג נוספת (למשל, ${actor3}: 'הסוף הגיע')"
     }
   ]
 }
-הקפד לכתוב את כל הדיאלוגים והתיאורים בעברית רהוטה וקולנועית.`;
+הקפד לכתוב את כל הדיאלוגים והתיאורים בעברית רהוטה וקולנועית, פרט ל-visualPromptEnglish שחייב להיות באנגלית בלבד.`;
 
     // Try Google Gemini API
     const apiKey = process.env.GEMINI_API_KEY;
@@ -156,6 +162,7 @@ router.post('/pitch', authMiddleware, async (req: AuthRequest, res: Response) =>
       storyboardCards: generatedScenes.map((s, idx) => ({
         sceneNumber: s.sceneNumber || idx + 1,
         visualPrompt: s.visualPrompt,
+        visualPromptEnglish: s.visualPromptEnglish,
         dialogue: s.dialogue,
       })),
     });
@@ -190,6 +197,7 @@ const saveRequestSchema = z.object({
   scenes: z.array(z.object({
     sceneNumber: z.number(),
     visualPrompt: z.string(),
+    visualPromptEnglish: z.string().optional(),
     dialogue: z.string(),
   })),
 });
@@ -210,6 +218,7 @@ router.post('/pitch/save', authMiddleware, async (req: AuthRequest, res: Respons
       storyboardCards: scenes.map((s) => ({
         sceneNumber: s.sceneNumber,
         visualPrompt: s.visualPrompt,
+        visualPromptEnglish: s.visualPromptEnglish,
         dialogue: s.dialogue,
       })),
     });

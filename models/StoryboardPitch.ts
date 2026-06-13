@@ -3,6 +3,7 @@ import mongoose, { Document, Schema } from 'mongoose';
 export interface IStoryboardCard {
   sceneNumber: number;
   visualPrompt: string;
+  visualPromptEnglish?: string;
   dialogue: string;
   imageUrl?: string;
 }
@@ -20,6 +21,7 @@ export interface IStoryboardPitch extends Document {
 const StoryboardCardSchema = new Schema<IStoryboardCard>({
   sceneNumber: { type: Number, required: true },
   visualPrompt: { type: String, required: true },
+  visualPromptEnglish: { type: String },
   dialogue: { type: String, required: true },
   imageUrl: { type: String },
 });
