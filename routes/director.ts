@@ -19,45 +19,16 @@ function generateLocalScriptFallback(movieTitle: string, prompt: string, castLis
   const actor2 = castList[1] || 'נבל';
   const actor3 = castList[2] || 'סיידקיק';
 
-  const lowerPrompt = prompt.toLowerCase();
-  
-  let scene1Visual = `סצנת פתיחה דרמטית ברקע של ${movieTitle}. האורות מעומעמים.`;
-  let scene1Dialogue = `${actor1}: "ידעתי שהרגע הזה יגיע, אך לא ציפיתי לכך היום."`;
-  
-  let scene2Visual = `מפגש מתוח מחוץ לחומות העיר. רוחות מנשבות ומעיפות אבק.`;
-  let scene2Dialogue = `${actor2}: "הכוח נמצא בידיי עכשיו. אין לך דרך חזרה."`;
+  const cleanPrompt = prompt.replace(/[?.!]/g, '').trim();
 
-  let scene3Visual = `עימות סופי בעצימות גבוהה. הגיבורים מביטים זה בזה לקראת ההכרעה.`;
-  let scene3Dialogue = `${actor3}: "הסיפור הזה יירשם בדפי ההיסטוריה לעד!"`;
+  let scene1Visual = `סצנת פתיחה קולנועית מתוך ${movieTitle}. ההתרחשות מתחילה בהשראת הרעיון: "${cleanPrompt}".`;
+  let scene1Dialogue = `${actor1}: "איך הגענו למצב הזה? הכל קורה כל כך מהר."`;
 
-  if (lowerPrompt.includes('חלל') || lowerPrompt.includes('מדע בדיוני') || lowerPrompt.includes('כוכב')) {
-    scene1Visual = `החללית של ${actor1} מרחפת אל עבר ערפילית זוהרת במעמקי הגלקסיה.`;
-    scene1Dialogue = `${actor1}: "התחילו את סריקת החיישנים. משהו ענק מתקרב."`;
-    
-    scene2Visual = `גשר הפיקוד מואר באורות אדומים של התרעה. ${actor2} מופיע על גבי ההולוגרמה.`;
-    scene2Dialogue = `${actor2}: "כוכב הלכת שלכם שייך לאימפריה כעת. התמסרו או שתושמדו."`;
-    
-    scene3Visual = `מנועי הדחף של החלליות מופעלים. קרב לייזרים מרהיב מתחיל סביב תחנת החלל.`;
-    scene3Dialogue = `${actor3}: "טען מגינים! אנחנו נלחמים על הבית שלנו!"`;
-  } else if (lowerPrompt.includes('רומא') || lowerPrompt.includes('קרב') || lowerPrompt.includes('חרב')) {
-    scene1Visual = `קולוסיאום רומי הומה אדם. ${actor1} עומד במרכז החול עם מגן וחרב ברונזה.`;
-    scene1Dialogue = `${actor1}: "למען החופש שלי ולמען הכבוד של משפחתי!"`;
-    
-    scene2Visual = `בצללים של מקדש יופיטר, ${actor2} מתווה תוכנית להפלת הקיסר.`;
-    scene2Dialogue = `${actor2}: "רומא זקוקה לשליט חזק, ולא לקיסר חלש ופחדן."`;
-    
-    scene3Visual = `חרבות נפגשות ברעש מתכתי. אבק מורם מהקרקע. ${actor3} ממהר לעזרה.`;
-    scene3Dialogue = `${actor3}: "הצדק ינצח היום, גם אם זה יעלה לנו בחיינו!"`;
-  } else if (lowerPrompt.includes('אהבה') || lowerPrompt.includes('רומנט')) {
-    scene1Visual = `בית קפה קטן ואינטימי בגשם. ${actor1} מביט מבעד לחלון הרטוב ומחזיק כוס קפה חם.`;
-    scene1Dialogue = `${actor1}: "חיכיתי לך כאן כל כך הרבה זמן, כמעט איבדתי תקווה."`;
-    
-    scene2Visual = `על גשר מואר בלילה, ${actor2} מודה ברגשות מורכבים.`;
-    scene2Dialogue = `${actor2}: "לפעמים הדברים הקשים ביותר הם אלו ששווה להילחם עליהם."`;
-    
-    scene3Visual = `שני הגיבורים צועדים יחד תחת מטרייה אחת לאורך השדרה המוארת.`;
-    scene3Dialogue = `${actor3}: "האהבה שלהם שינתה את כל חוקי המשחק בעיר הזו."`;
-  }
+  let scene2Visual = `המצב מסתבך מחוץ לגבולות המוכרים. ${actor2} נכנס לתמונה עם תפנית דרמטית בהשראת "${cleanPrompt}".`;
+  let scene2Dialogue = `${actor2}: "אם חשבת שתוכל לברוח מזה, טעית בגדול."`;
+
+  let scene3Visual = `ההכרעה הסופית של העלילה. ${actor3} מנסה להציל את המצב ברגע האחרון.`;
+  let scene3Dialogue = `${actor3}: "זה הרגע שלנו לפעול, אין לנו הזדמנות שנייה!"`;
 
   return [
     { sceneNumber: 1, visualPrompt: scene1Visual, dialogue: scene1Dialogue },
@@ -207,6 +178,59 @@ router.post('/pitch', authMiddleware, async (req: AuthRequest, res: Response) =>
     }
     console.error('🔥 Error creating storyboard pitch:', error);
     res.status(500).json({ success: false, message: 'Server error generating storyboard pitch' });
+  }
+});
+
+const saveRequestSchema = z.object({
+  movieId: z.number(),
+  movieTitle: z.string(),
+  prompt: z.string(),
+  castList: z.array(z.string()),
+  posterConcept: z.string(),
+  scenes: z.array(z.object({
+    sceneNumber: z.number(),
+    visualPrompt: z.string(),
+    dialogue: z.string(),
+  })),
+});
+
+// @route   POST api/director/pitch/save
+// @desc    Save a client-side generated pitch & storyboard in MongoDB
+router.post('/pitch/save', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const validatedData = saveRequestSchema.parse(req.body);
+    const { movieId, movieTitle, prompt, castList, posterConcept, scenes } = validatedData;
+
+    const newPitch = new StoryboardPitch({
+      user: req.userId!,
+      movieId,
+      movieTitle,
+      prompt,
+      castList,
+      storyboardCards: scenes.map((s) => ({
+        sceneNumber: s.sceneNumber,
+        visualPrompt: s.visualPrompt,
+        dialogue: s.dialogue,
+      })),
+    });
+
+    await newPitch.save();
+
+    res.status(201).json({
+      success: true,
+      data: {
+        id: newPitch._id,
+        movieTitle: newPitch.movieTitle,
+        posterConcept,
+        scenes: newPitch.storyboardCards
+      }
+    });
+  } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ success: false, errors: error.issues });
+    }
+    console.error('🔥 Error saving storyboard pitch:', error);
+    res.status(500).json({ success: false, message: 'Server error saving storyboard pitch' });
   }
 });
 
