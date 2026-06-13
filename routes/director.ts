@@ -40,6 +40,49 @@ function generateLocalScriptFallback(movieTitle: string, prompt: string, castLis
   ];
 }
 
+// @route   GET api/director/image
+// @desc    Generate an image from prompt using Hugging Face FLUX.1-schnell
+router.get('/image', async (req, res) => {
+  try {
+    const { prompt } = req.query;
+    if (!prompt) {
+      return res.status(400).send('Prompt is required');
+    }
+
+    const hfToken = process.env.HUGGINGFACE_API_KEY;
+    if (!hfToken) {
+      console.warn('⚠️ HUGGINGFACE_API_KEY is not configured in server .env');
+      return res.status(404).send('Hugging Face API key not configured');
+    }
+
+    const response = await fetch(
+      'https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${hfToken}`
+        },
+        body: JSON.stringify({ inputs: prompt })
+      }
+    );
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error('🔥 Hugging Face API error:', errText);
+      return res.status(response.status).send(errText);
+    }
+
+    const buffer = await response.arrayBuffer();
+    res.setHeader('Content-Type', 'image/jpeg');
+    res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache for 1 day
+    return res.send(Buffer.from(buffer));
+  } catch (error: any) {
+    console.error('🔥 Error generating image via Hugging Face:', error.message);
+    return res.status(500).send('Server error generating image');
+  }
+});
+
 // @route   POST api/director/pitch
 // @desc    Generate a custom script & storyboard pitch based on a user prompt and cast
 router.post('/pitch', authMiddleware, async (req: AuthRequest, res: Response) => {
