@@ -14,7 +14,12 @@ const snackSchema = z.object({
   name: z.string(),
   price: z.number(),
   quantity: z.number(),
-  image: z.string(),
+  image: z.any().optional(),
+  customization: z.object({
+    butterLevel: z.number().optional(),
+    flavors: z.array(z.string()).optional(),
+    toppings: z.array(z.string()).optional(),
+  }).optional(),
 });
 
 const ticketSchema = z.object({

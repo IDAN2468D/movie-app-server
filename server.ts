@@ -14,6 +14,7 @@ import cinemaRoutes from './routes/cinema';
 import vaultRoutes from './routes/vault';
 import debateRoutes from './routes/debate';
 import legacyRoutes from './routes/legacy';
+import directorRoutes from './routes/director';
 import http from 'http';
 import { Server } from 'socket.io';
 import { setupSquadSockets } from './sockets/squadSocket';
@@ -58,6 +59,7 @@ app.use('/api/cinema', cinemaRoutes);
 app.use('/api/vault', vaultRoutes);
 app.use('/api/debate', debateRoutes);
 app.use('/api/legacy', legacyRoutes);
+app.use('/api/director', directorRoutes);
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });

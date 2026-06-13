@@ -1,11 +1,18 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
+export interface ISnackCustomization {
+  butterLevel?: number;
+  flavors?: string[];
+  toppings?: string[];
+}
+
 export interface ISnackItem {
   id: string;
   name: string;
   price: number;
   quantity: number;
   image: string;
+  customization?: ISnackCustomization;
 }
 
 export interface ITicket extends Document {
@@ -60,6 +67,11 @@ const TicketSchema: Schema = new Schema({
     price: { type: Number, required: true },
     quantity: { type: Number, required: true },
     image: { type: String },
+    customization: {
+      butterLevel: { type: Number },
+      flavors: [{ type: String }],
+      toppings: [{ type: String }]
+    }
   }],
   totalPrice: { type: Number, required: true },
   bookingDate: { type: Date, default: Date.now },

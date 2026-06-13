@@ -133,4 +133,43 @@ router.post('/validate-geofence', async (req: Request, res: Response) => {
   }
 });
 
+// GET 3D sightline and audio coordinates for seat view
+router.get('/seat-view/:hallId', async (req: Request, res: Response) => {
+  try {
+    const { row, number } = req.query;
+    if (!row || !number) {
+       res.status(400).json({ error: 'row and number are required' });
+       return;
+    }
+
+    const rowStr = String(row).toUpperCase();
+    const seatNum = parseInt(String(number), 10);
+
+    const rowVal = rowStr.charCodeAt(0) - 65; // A=0, B=1...
+    const normalizedX = (seatNum - 6) / 6;
+    const normalizedY = 0.15 + (rowVal * 0.1);
+    const normalizedZ = 1.0 + (rowVal * 0.05);
+
+    const baseSoundLevel = 85; 
+    const soundLevel = Math.round(baseSoundLevel - Math.abs(normalizedX) * 4 - (normalizedY * 8));
+
+    res.json({
+      success: true,
+      data: {
+        row: rowStr,
+        number: seatNum,
+        coords3D: {
+          x: parseFloat(normalizedX.toFixed(3)),
+          y: parseFloat(normalizedY.toFixed(3)),
+          z: parseFloat(normalizedZ.toFixed(3))
+        },
+        soundLevel
+      }
+    });
+  } catch (error) {
+    console.error('Error in seat-view coordinates:', error);
+    res.status(500).json({ success: false, error: 'Failed to compute seat view perspective' });
+  }
+});
+
 export default router;

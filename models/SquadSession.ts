@@ -1,11 +1,20 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
+export interface ISquadSnack {
+  id: string;
+  name: string;
+  price: number;
+  quantity: number;
+  image?: string;
+}
+
 export interface ISquadMember {
   userId: string;
   name: string;
   email: string;
   socketId?: string;
   joinedAt: Date;
+  snacks?: ISquadSnack[];
 }
 
 export interface ISquadSeat {
@@ -45,7 +54,14 @@ const SquadSessionSchema: Schema = new Schema({
     name: { type: String, required: true },
     email: { type: String, required: true },
     socketId: { type: String },
-    joinedAt: { type: Date, default: Date.now }
+    joinedAt: { type: Date, default: Date.now },
+    snacks: [{
+      id: { type: String, required: true },
+      name: { type: String, required: true },
+      price: { type: Number, required: true },
+      quantity: { type: Number, required: true },
+      image: { type: String }
+    }]
   }],
   lockedSeats: [{
     row: { type: String, required: true },

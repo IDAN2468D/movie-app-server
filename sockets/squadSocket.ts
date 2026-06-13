@@ -50,6 +50,35 @@ export function setupSquadSockets(io: Server) {
       });
     });
 
+    // Broadcast live cursor movements inside the group seat map
+    socket.on('cursor-move', ({ squadCode, userId, userName, x, y }) => {
+      const roomName = `squad_${squadCode.toUpperCase()}`;
+      socket.to(roomName).emit('cursor-update', {
+        userId,
+        userName,
+        x,
+        y
+      });
+    });
+
+    // Update member's snacks co-order tray state in MongoDB and broadcast to room
+    socket.on('snack-update', async ({ squadCode, userId, snacks }) => {
+      try {
+        const roomName = `squad_${squadCode.toUpperCase()}`;
+        const session = await SquadSession.findOne({ squadCode: squadCode.toUpperCase() });
+        if (!session) return;
+
+        const memberIndex = session.members.findIndex(m => m.userId === userId);
+        if (memberIndex !== -1 && session.members[memberIndex]) {
+          session.members[memberIndex].snacks = snacks;
+          await session.save();
+          io.to(roomName).emit('squad-update', session);
+        }
+      } catch (err) {
+        console.error('Error in socket snack-update:', err);
+      }
+    });
+
     // Toggle seat reservation within the squad
     socket.on('seat-toggle', async ({ squadCode, userId, row, number }) => {
       try {
