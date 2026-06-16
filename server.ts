@@ -15,6 +15,8 @@ import vaultRoutes from './routes/vault';
 import debateRoutes from './routes/debate';
 import legacyRoutes from './routes/legacy';
 import directorRoutes from './routes/director';
+import synapseRoutes from './routes/synapse';
+import oracleRoutes from './routes/oracle';
 import http from 'http';
 import { Server } from 'socket.io';
 import { setupSquadSockets } from './sockets/squadSocket';
@@ -60,6 +62,8 @@ app.use('/api/vault', vaultRoutes);
 app.use('/api/debate', debateRoutes);
 app.use('/api/legacy', legacyRoutes);
 app.use('/api/director', directorRoutes);
+app.use('/api/synapse', synapseRoutes);
+app.use('/api/oracle', oracleRoutes);
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
