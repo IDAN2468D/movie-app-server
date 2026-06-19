@@ -5,6 +5,29 @@ import { authMiddleware, AuthRequest } from '../middleware/auth';
 import CineVision from '../models/CineVision';
 import LensResearch from '../models/LensResearch';
 import CineArtAsset from '../models/CineArtAsset';
+import CineJournal from '../models/CineJournal';
+import SquadBudget from '../models/SquadBudget';
+
+const journalSchema = z.object({
+  movieId: z.string(),
+  movieTitle: z.string(),
+  userRating: z.number().min(1).max(10),
+  userNotes: z.string(),
+});
+
+const squadBudgetSchema = z.object({
+  squadId: z.string(),
+  movieTitle: z.string(),
+  eventDate: z.string(),
+  participants: z.array(z.string()),
+  totalBudget: z.number(),
+});
+
+const pitchDeckSchema = z.object({
+  movieTitle: z.string(),
+  genre: z.string(),
+  pitchPrompt: z.string(),
+});
 
 const router = express.Router();
 
@@ -201,4 +224,124 @@ router.post('/generate-svg', authMiddleware, async (req: AuthRequest, res: Respo
   }
 });
 
+// @route   POST api/mcp/journal (CineJournal AI & Obsidian Sync)
+router.post('/journal', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const validatedData = journalSchema.parse(req.body);
+    const { movieId, movieTitle, userRating, userNotes } = validatedData;
+
+    let triviaDetails = [
+      'הסרט הופק בטכנולוגיות צילום מתקדמות.',
+      'הצילומים נערכו במספר לוקיישנים בינלאומיים.'
+    ];
+    let markdownTemplate = '';
+
+    try {
+      const responseText = await callGemini(
+        'You are a movie journal assistant. Generate a JSON containing 2 movie trivia bullet points in Hebrew and a markdownTemplate styled for a journal entry. Return ONLY JSON format: { "triviaDetails": string[], "markdownTemplate": string }',
+        `Movie: ${movieTitle}. Rating: ${userRating}/10. Notes: ${userNotes}`
+      );
+      const cleaned = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+      const parsed = JSON.parse(cleaned);
+      if (parsed.triviaDetails) triviaDetails = parsed.triviaDetails;
+      if (parsed.markdownTemplate) markdownTemplate = parsed.markdownTemplate;
+    } catch (apiError) {
+      console.warn('[CineJournal API] Gemini failed. Using defaults.');
+      markdownTemplate = `# יומן צפייה: ${movieTitle}\n\n**דירוג:** ${userRating}/10\n\n**רשמים:**\n${userNotes}`;
+    }
+
+    const newJournal = new CineJournal({
+      userId: req.userId!,
+      movieId,
+      movieTitle,
+      userRating,
+      userNotes,
+      triviaDetails,
+      obsidianPath: `CineJournal/${movieTitle.replace(/[^a-zA-Z0-9א-ת]/g, '_')}.md`
+    });
+
+    await newJournal.save();
+
+    return res.status(201).json({
+      success: true,
+      data: newJournal,
+      markdownContent: markdownTemplate
+    });
+  } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ success: false, errors: error.issues });
+    }
+    console.error('[CineJournal API] Error:', error);
+    return res.status(500).json({ success: false, message: 'Server error creating journal' });
+  }
+});
+
+// @route   POST api/mcp/squad-budget (CineBudget & Shared Event Planner)
+router.post('/squad-budget', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const validatedData = squadBudgetSchema.parse(req.body);
+    const { squadId, movieTitle, eventDate, participants, totalBudget } = validatedData;
+
+    const newBudget = new SquadBudget({
+      squadId,
+      movieTitle,
+      eventDate: new Date(eventDate),
+      participants,
+      totalBudget,
+      googleSheetId: `mock-sheet-${Math.random().toString(36).substring(7)}`,
+      googleCalendarEventId: `mock-event-${Math.random().toString(36).substring(7)}`
+    });
+
+    await newBudget.save();
+
+    return res.status(201).json({
+      success: true,
+      data: newBudget
+    });
+  } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ success: false, errors: error.issues });
+    }
+    console.error('[CineBudget API] Error:', error);
+    return res.status(500).json({ success: false, message: 'Server error creating budget' });
+  }
+});
+
+// @route   POST api/mcp/pitch-deck (CinePitch & Production Lab)
+router.post('/pitch-deck', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const validatedData = pitchDeckSchema.parse(req.body);
+    const { movieTitle, genre, pitchPrompt } = validatedData;
+
+    let generatedOutline = 'תקציר כללי ומבנה סצנות מפתח.';
+    try {
+      const responseText = await callGemini(
+        'You are a creative movie producer. Generate a detailed movie pitch outline and production plan in Hebrew. Return plain text.',
+        `Title: ${movieTitle}. Genre: ${genre}. Prompt: ${pitchPrompt}`
+      );
+      generatedOutline = responseText;
+    } catch (apiError) {
+      console.warn('[CinePitch API] Gemini failed. Using default outline.');
+    }
+
+    return res.status(201).json({
+      success: true,
+      data: {
+        movieTitle,
+        genre,
+        pitchPrompt,
+        outline: generatedOutline,
+        googleSlidesId: `mock-slides-${Math.random().toString(36).substring(7)}`
+      }
+    });
+  } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ success: false, errors: error.issues });
+    }
+    console.error('[CinePitch API] Error:', error);
+    return res.status(500).json({ success: false, message: 'Server error creating pitch deck' });
+  }
+});
+
 export default router;
+
