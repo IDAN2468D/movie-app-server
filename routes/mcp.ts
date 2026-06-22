@@ -310,38 +310,45 @@ router.post('/squad-budget', authMiddleware, async (req: AuthRequest, res: Respo
   }
 });
 
-// Helper to get Google Drive/Slides tokens from local config if it exists
+// Helper to get Google Drive/Slides tokens from local config or environment variables
 async function getGoogleAuthClient(): Promise<OAuth2Client | null> {
   try {
-    const homeDir = process.env.USERPROFILE || process.env.HOME || '';
-    const tokenPath = path.join(homeDir, '.config', 'google-drive-mcp', 'tokens.json');
-    
-    if (!fs.existsSync(tokenPath)) {
-      console.warn('[Google Auth] tokens.json not found at:', tokenPath);
-      return null;
-    }
-    
-    const tokensContent = fs.readFileSync(tokenPath, 'utf-8');
-    const tokens = JSON.parse(tokensContent);
-    
     const oauth2Client = new OAuth2Client(
       process.env.GOOGLE_CLIENT_ID,
       process.env.GOOGLE_CLIENT_SECRET
     );
+
+    const homeDir = process.env.USERPROFILE || process.env.HOME || '';
+    const tokenPath = path.join(homeDir, '.config', 'google-drive-mcp', 'tokens.json');
     
-    oauth2Client.setCredentials({
-      refresh_token: tokens.refresh_token,
-      access_token: tokens.access_token,
-    });
-    
-    // Refresh access token if expired/needed
-    await oauth2Client.getAccessToken();
-    return oauth2Client;
+    if (fs.existsSync(tokenPath)) {
+      console.log('[Google Auth] Using local tokens.json');
+      const tokensContent = fs.readFileSync(tokenPath, 'utf-8');
+      const tokens = JSON.parse(tokensContent);
+      
+      oauth2Client.setCredentials({
+        refresh_token: tokens.refresh_token,
+        access_token: tokens.access_token,
+      });
+      await oauth2Client.getAccessToken();
+      return oauth2Client;
+    } else if (process.env.GOOGLE_REFRESH_TOKEN) {
+      console.log('[Google Auth] Using GOOGLE_REFRESH_TOKEN from environment variables');
+      oauth2Client.setCredentials({
+        refresh_token: process.env.GOOGLE_REFRESH_TOKEN
+      });
+      await oauth2Client.getAccessToken();
+      return oauth2Client;
+    } else {
+      console.warn('[Google Auth] Neither tokens.json nor GOOGLE_REFRESH_TOKEN environment variable was found.');
+      return null;
+    }
   } catch (error) {
     console.error('[Google Auth] Failed to create OAuth client:', error);
     return null;
   }
 }
+
 
 // Function to create a real presentation on Google Slides
 async function createSlidesOnGoogle(
