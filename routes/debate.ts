@@ -39,7 +39,7 @@ async function callGemini(chatHistory: any[]): Promise<string> {
     parts: [{ text: msg.content }]
   }));
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${apiKey}`;
 
   const response = await fetch(url, {
     method: 'POST',
@@ -72,45 +72,6 @@ async function callGemini(chatHistory: any[]): Promise<string> {
   return resText.trim();
 }
 
-/**
- * Call Local Ollama (gemma2:2b) fallback
- */
-async function callOllamaFallback(chatHistory: any[]): Promise<string> {
-  const url = 'http://localhost:11434/api/chat';
-  
-  // Format history for Ollama chat format
-  const messages = [
-    { role: 'system', content: SYSTEM_PROMPT },
-    ...chatHistory.map(msg => ({
-      role: msg.role === 'model' ? 'assistant' : 'user',
-      content: msg.content
-    }))
-  ];
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'gemma2:2b',
-      messages,
-      stream: false,
-    })
-  });
-
-  if (!response.ok) {
-    throw new Error(`Ollama fallback failed with status ${response.status}`);
-  }
-
-  const resJson = await response.json();
-  const resText = resJson?.message?.content;
-  if (!resText) {
-    throw new Error('Invalid response structure from Ollama API');
-  }
-
-  return resText.trim();
-}
 
 /**
  * Last-resort simulation fallback if both API and Ollama fail
@@ -208,15 +169,8 @@ router.post('/message', authMiddleware, async (req: AuthRequest, res: Response) 
       console.log('[DebateAI] Gemini responded successfully.');
     } catch (geminiError) {
       console.warn('⚠️ Gemini API call failed. Exception:', geminiError);
-      try {
-        console.log('[DebateAI] Booting local Ollama fallback (gemma2:2b)...');
-        aiResponseText = await callOllamaFallback(session.chatHistory);
-        console.log('[DebateAI] Ollama fallback succeeded.');
-      } catch (ollamaError) {
-        console.warn('❌ Ollama fallback failed. Exception:', ollamaError);
-        console.log('[DebateAI] Using simulated critic response generator.');
-        aiResponseText = getSimulatedCriticResponse(validatedData.message, validatedData.movieTitle);
-      }
+      console.log('[DebateAI] Using simulated critic response generator.');
+      aiResponseText = getSimulatedCriticResponse(validatedData.message, validatedData.movieTitle);
     }
 
     // Append AI Critic response

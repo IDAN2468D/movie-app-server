@@ -7,6 +7,11 @@ import LensResearch from '../models/LensResearch';
 import CineArtAsset from '../models/CineArtAsset';
 import CineJournal from '../models/CineJournal';
 import SquadBudget from '../models/SquadBudget';
+import CineSoundProfile from '../models/CineSoundProfile';
+import SquadTransit from '../models/SquadTransit';
+import SeatAuction from '../models/SeatAuction';
+import User from '../models/User';
+import mongoose from 'mongoose';
 import fs from 'fs';
 import path from 'path';
 import { OAuth2Client } from 'google-auth-library';
@@ -57,7 +62,7 @@ async function callGemini(systemInstruction: string, prompt: string): Promise<st
   if (!apiKey) throw new Error('GEMINI_API_KEY is not configured');
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({ 
-    model: 'gemini-1.5-flash',
+    model: 'gemini-3.1-flash-lite',
     systemInstruction 
   });
   const result = await model.generateContent(prompt);
@@ -612,6 +617,309 @@ router.post('/pitch-deck', authMiddleware, async (req: AuthRequest, res: Respons
     }
     console.error('[CinePitch API] Error:', error);
     return res.status(500).json({ success: false, message: 'Server error creating pitch deck' });
+  }
+});
+
+// ── Zod Schemas for Next-Gen Features ──
+const soundProfileSchema = z.object({
+  showtimeId: z.string(),
+  seatCode: z.string(),
+  soundMode: z.enum(['Dolby Atmos', 'Spatial Stereo', 'DTS:X']),
+  gyroState: z.boolean(),
+  equalizer: z.object({
+    bass: z.number().min(0).max(100),
+    mid: z.number().min(0).max(100),
+    treble: z.number().min(0).max(100),
+  }),
+  roomSimLevel: z.number().min(0).max(100),
+});
+
+const transitLocationSchema = z.object({
+  squadId: z.string(),
+  latitude: z.number(),
+  longitude: z.number(),
+  status: z.enum(['driving', 'passenger', 'arrived']),
+});
+
+const directorReimagineSchema = z.object({
+  movieTitle: z.string(),
+  genre: z.string(),
+  sceneDescription: z.string(),
+});
+
+const createAuctionSchema = z.object({
+  showtimeId: z.string(),
+  originalSeat: z.string(),
+  targetSeat: z.string().optional(),
+  pointsRequired: z.number().min(1),
+  durationMinutes: z.number().min(1).default(60),
+});
+
+const placeBidSchema = z.object({
+  auctionId: z.string(),
+  pointsBid: z.number().min(1),
+});
+
+// ── CineSound Spatial Tuning Endpoints ──
+
+// @route   GET api/mcp/cinesound/profile/:showtimeId/:seatCode
+// @desc    Get spatial audio settings profile for a seat
+router.get('/cinesound/profile/:showtimeId/:seatCode', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const { showtimeId, seatCode } = req.params;
+    const profile = await CineSoundProfile.findOne({ userId: req.userId as any, showtimeId: showtimeId as string, seatCode: seatCode as string });
+    if (!profile) {
+      return res.json({
+        success: true,
+        data: {
+          showtimeId,
+          seatCode,
+          soundMode: 'Dolby Atmos',
+          gyroState: true,
+          equalizer: { bass: 50, mid: 50, treble: 50 },
+          roomSimLevel: 70,
+        }
+      });
+    }
+    return res.json({ success: true, data: profile });
+  } catch (error) {
+    console.error('[CineSound API] Error fetching sound profile:', error);
+    return res.status(500).json({ success: false, message: 'Server error fetching sound profile' });
+  }
+});
+
+// @route   POST api/mcp/cinesound/profile
+// @desc    Save/update spatial audio settings profile
+router.post('/cinesound/profile', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const validatedData = soundProfileSchema.parse(req.body);
+    const { showtimeId, seatCode, soundMode, gyroState, equalizer, roomSimLevel } = validatedData;
+    
+    const profile = await CineSoundProfile.findOneAndUpdate(
+      { userId: req.userId as any, showtimeId: showtimeId as string, seatCode: seatCode as string },
+      { soundMode, gyroState, equalizer, roomSimLevel },
+      { new: true, upsert: true }
+    );
+    
+    return res.json({ success: true, data: profile });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ success: false, errors: error.issues });
+    }
+    console.error('[CineSound API] Error saving sound profile:', error);
+    return res.status(500).json({ success: false, message: 'Server error saving sound profile' });
+  }
+});
+
+// ── CineSquad Live Transit Endpoints ──
+
+// @route   POST api/mcp/cinesquad/transit/location
+// @desc    Update current transit location coordinate of a user
+router.post('/cinesquad/transit/location', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const validatedData = transitLocationSchema.parse(req.body);
+    const { squadId, latitude, longitude, status } = validatedData;
+    
+    const transit = await SquadTransit.findOneAndUpdate(
+      { squadId: squadId as any, userId: req.userId as any },
+      { coordinates: { latitude, longitude }, status, createdAt: new Date() },
+      { new: true, upsert: true }
+    );
+    
+    return res.json({ success: true, data: transit });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ success: false, errors: error.issues });
+    }
+    console.error('[CineSquad API] Error updating transit location:', error);
+    return res.status(500).json({ success: false, message: 'Server error updating transit location' });
+  }
+});
+
+// @route   GET api/mcp/cinesquad/transit/positions/:squadId
+// @desc    Get transit locations of all squad members
+router.get('/cinesquad/transit/positions/:squadId', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const { squadId } = req.params;
+    const positions = await SquadTransit.find({ squadId: squadId as string }).populate('userId', 'name profileImage');
+    return res.json({ success: true, data: positions });
+  } catch (error) {
+    console.error('[CineSquad API] Error fetching squad coordinates:', error);
+    return res.status(500).json({ success: false, message: 'Server error fetching squad coordinates' });
+  }
+});
+
+// ── CineDirector AI Reimagining Endpoint ──
+
+// @route   POST api/mcp/director/reimagine
+// @desc    Reimagine a movie scene into a specific genre
+router.post('/director/reimagine', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const validatedData = directorReimagineSchema.parse(req.body);
+    const { movieTitle, genre, sceneDescription } = validatedData;
+    
+    let reimaginedScene = '';
+    let isLocalFallback = false;
+    
+    try {
+      const responseText = await callGemini(
+        `You are a movie director and screenwriter. Rewrite the following movie scene for the film "${movieTitle}" into the style of the genre "${genre}". Make the reimagined scene dramatic, highly creative, and written in Hebrew. Return ONLY the rewritten script/text, no explanations or markdown blocks.`,
+        sceneDescription
+      );
+      reimaginedScene = responseText.trim();
+    } catch (apiError) {
+      console.warn('[CineDirector AI] Gemini failed. Using premium offline simulation.');
+      // High quality static mock fallback
+      reimaginedScene = `[הדמיית מאיץ יצירתי קולנועי]\nסצנה משוכתבת לסרט "${movieTitle}" בז'אנר "${genre}":\nהדמויות נכנסות לרקע דרמטי מעומעם, האורות משתנים לגוונים מודגשים המאפיינים את הז'אנר. הדיאלוגים מותאמים לקצב ולרוח היצירה הקולנועית, ומייצרים מתח חדש ומפתיע התואם את האווירה הנדרשת.`;
+      isLocalFallback = true;
+    }
+    
+    return res.json({
+      success: true,
+      data: {
+        movieTitle,
+        genre,
+        reimaginedScene,
+        isLocalFallback
+      }
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ success: false, errors: error.issues });
+    }
+    console.error('[CineDirector API] Error reimagining scene:', error);
+    return res.status(500).json({ success: false, message: 'Server error reimagining scene' });
+  }
+});
+
+// ── CineSeat Swap & Auction Endpoints ──
+
+// @route   POST api/mcp/seatauction/create
+// @desc    List a seat for swap/auction
+router.post('/seatauction/create', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const validatedData = createAuctionSchema.parse(req.body);
+    const { showtimeId, originalSeat, targetSeat, pointsRequired, durationMinutes } = validatedData;
+    
+    const expiresAt = new Date();
+    expiresAt.setMinutes(expiresAt.getMinutes() + durationMinutes);
+    
+    const auction = new SeatAuction({
+      showtimeId,
+      ownerId: req.userId!,
+      originalSeat,
+      targetSeat,
+      status: 'open',
+      pointsRequired,
+      expiresAt
+    });
+    
+    await auction.save();
+    return res.status(201).json({ success: true, data: auction });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ success: false, errors: error.issues });
+    }
+    console.error('[SeatAuction API] Error creating auction:', error);
+    return res.status(500).json({ success: false, message: 'Server error creating seat auction' });
+  }
+});
+
+// @route   GET api/mcp/seatauction/active/:showtimeId
+// @desc    Get active auctions for a showtime
+router.get('/seatauction/active/:showtimeId', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const { showtimeId } = req.params;
+    const auctions = await SeatAuction.find({ 
+      showtimeId: showtimeId as string, 
+      status: 'open',
+      expiresAt: { $gt: new Date() }
+    }).populate('ownerId', 'name profileImage');
+    return res.json({ success: true, data: auctions });
+  } catch (error) {
+    console.error('[SeatAuction API] Error fetching active auctions:', error);
+    return res.status(500).json({ success: false, message: 'Server error fetching active auctions' });
+  }
+});
+
+// @route   POST api/mcp/seatauction/bid
+// @desc    Place a bid on a seat auction
+router.post('/seatauction/bid', authMiddleware, async (req: AuthRequest, res: Response) => {
+  const session = await mongoose.startSession();
+  try {
+    session.startTransaction();
+    const validatedData = placeBidSchema.parse(req.body);
+    const { auctionId, pointsBid } = validatedData;
+
+    const auction = await SeatAuction.findById(auctionId).session(session);
+    if (!auction) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(404).json({ success: false, message: 'Auction not found' });
+    }
+
+    if (auction.status !== 'open' || auction.expiresAt < new Date()) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({ success: false, message: 'Auction is closed or expired' });
+    }
+
+    if (pointsBid <= auction.highestBid) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({ success: false, message: 'Bid must be higher than current highest bid' });
+    }
+
+    // Check user points
+    const user = await User.findById(req.userId).session(session);
+    if (!user || user.loyaltyPoints < pointsBid) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({ success: false, message: 'Insufficient CinePass points' });
+    }
+
+    // Refund previous bidder
+    if (auction.highestBidderId) {
+      const prevBidder = await User.findById(auction.highestBidderId).session(session);
+      if (prevBidder) {
+        prevBidder.loyaltyPoints += auction.highestBid;
+        prevBidder.loyaltyActivity.push({
+          action: `החזר נקודות - הצעה גבוהה יותר על כסא ${auction.originalSeat}`,
+          points: `+${auction.highestBid}`,
+          date: new Date()
+        });
+        await prevBidder.save();
+      }
+    }
+
+    // Deduct points from new bidder
+    user.loyaltyPoints -= pointsBid;
+    user.loyaltyActivity.push({
+      action: `הצעת ביד על כסא ${auction.originalSeat} בהקרנה`,
+      points: `-${pointsBid}`,
+      date: new Date()
+    });
+    await user.save();
+
+    // Update auction
+    auction.highestBid = pointsBid;
+    auction.highestBidderId = req.userId as any;
+    await auction.save();
+
+    await session.commitTransaction();
+    session.endSession();
+
+    return res.json({ success: true, data: auction });
+  } catch (error: any) {
+    if (session) {
+      await session.abortTransaction();
+      session.endSession();
+    }
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ success: false, errors: error.issues });
+    }
+    console.error('[SeatAuction API] Bid placement error:', error);
+    return res.status(500).json({ success: false, message: 'Server error placing bid' });
   }
 });
 

@@ -138,7 +138,7 @@ router.post('/pitch', authMiddleware, async (req: AuthRequest, res: Response) =>
       try {
         const genAI = new GoogleGenerativeAI(apiKey);
         const model = genAI.getGenerativeModel({ 
-          model: 'gemini-1.5-flash',
+          model: 'gemini-3.1-flash-lite',
           systemInstruction
         });
 
@@ -154,42 +154,11 @@ router.post('/pitch', authMiddleware, async (req: AuthRequest, res: Response) =>
           console.log('🎬 Storyboard generated successfully via Google Gemini API.');
         }
       } catch (geminiError) {
-        console.warn('⚠️ Google Gemini API failed or rate limited. Redirecting to local Ollama fallback...');
+        console.warn('⚠️ Google Gemini API failed or rate limited.');
       }
     }
 
-    // Fallback 1: Local Ollama Server (gemma2:2b)
-    if (!geminiSuccess) {
-      try {
-        const ollamaResponse = await fetch('http://localhost:11434/api/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: 'gemma2:2b',
-            prompt: `${systemInstruction}\n\n${modelPrompt}`,
-            stream: false,
-          }),
-        });
-
-        if (ollamaResponse.ok) {
-          const ollamaData: any = await ollamaResponse.json();
-          const text = ollamaData.response;
-          const jsonStr = text.replace(/```json/g, '').replace(/```/g, '').trim();
-          const parsed = JSON.parse(jsonStr);
-
-          if (parsed.scenes && parsed.scenes.length === 3) {
-            generatedScenes = parsed.scenes;
-            posterConcept = parsed.posterConcept || posterConcept;
-            geminiSuccess = true;
-            console.log('🤖 Storyboard generated successfully via Local Ollama (gemma2:2b).');
-          }
-        }
-      } catch (ollamaError) {
-        console.warn('⚠️ Local Ollama server is offline or unreachable. Using rule-based fallback generator...');
-      }
-    }
-
-    // Fallback 2: Rule-Based Fallback Engine (100% Uptime Guaranteed)
+    // Fallback: Rule-Based Fallback Engine (100% Uptime Guaranteed)
     if (!geminiSuccess) {
       generatedScenes = generateLocalScriptFallback(movieTitle, prompt, castList);
       console.log('🛡️ Storyboard generated successfully via Rule-Based Offline Fallback.');

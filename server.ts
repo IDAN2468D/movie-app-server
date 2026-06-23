@@ -22,6 +22,7 @@ import http from 'http';
 import { Server } from 'socket.io';
 import { setupSquadSockets } from './sockets/squadSocket';
 import { setupLoungeSockets } from './sockets/loungeSocket';
+import { setupAuctionSockets } from './sockets/auctionSocket';
 
 console.log('📧 Email Config:', process.env.EMAIL_USER ? `Loaded (${process.env.EMAIL_USER})` : 'Not loaded');
 
@@ -38,6 +39,7 @@ const io = new Server(server, {
 });
 setupSquadSockets(io);
 setupLoungeSockets(io);
+setupAuctionSockets(io);
 
 // Middleware
 app.use(cors());
