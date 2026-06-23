@@ -10,6 +10,10 @@ import SquadBudget from '../models/SquadBudget';
 import CineSoundProfile from '../models/CineSoundProfile';
 import SquadTransit from '../models/SquadTransit';
 import SeatAuction from '../models/SeatAuction';
+import CineChatSession from '../models/CineChatSession';
+import CinemaMap from '../models/CinemaMap';
+import AuraProfile from '../models/AuraProfile';
+import MovieHaptics from '../models/MovieHaptics';
 import User from '../models/User';
 import mongoose from 'mongoose';
 import fs from 'fs';
@@ -21,6 +25,11 @@ const journalSchema = z.object({
   movieTitle: z.string(),
   userRating: z.number().min(1).max(10),
   userNotes: z.string(),
+});
+
+const chatMessageSchema = z.object({
+  message: z.string().min(1).max(500),
+  sessionId: z.string().optional(),
 });
 
 const squadBudgetSchema = z.object({
@@ -920,6 +929,347 @@ router.post('/seatauction/bid', authMiddleware, async (req: AuthRequest, res: Re
     }
     console.error('[SeatAuction API] Bid placement error:', error);
     return res.status(500).json({ success: false, message: 'Server error placing bid' });
+  }
+});
+
+// ── Feature 1: AI Cine-Concierge Routes ──
+
+// @route   GET api/mcp/chat/sessions
+// @desc    Get user's previous chat sessions
+router.get('/chat/sessions', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const sessions = await CineChatSession.find({ userId: req.userId! }).sort({ createdAt: -1 });
+    return res.json({ success: true, data: sessions });
+  } catch (error) {
+    console.error('[Cine-Concierge API] Error fetching sessions:', error);
+    return res.status(500).json({ success: false, message: 'Server error fetching chat sessions' });
+  }
+});
+
+// @route   POST api/mcp/chat/session
+// @desc    Create a new chat session
+router.post('/chat/session', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const newSession = new CineChatSession({
+      userId: req.userId!,
+      messages: [],
+      sentimentAura: 'neutral'
+    });
+    await newSession.save();
+    return res.status(201).json({ success: true, data: newSession });
+  } catch (error) {
+    console.error('[Cine-Concierge API] Error creating session:', error);
+    return res.status(500).json({ success: false, message: 'Server error creating chat session' });
+  }
+});
+
+// @route   POST api/mcp/chat/message
+// @desc    Send a message to the AI Cine-Concierge
+router.post('/chat/message', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const validatedData = chatMessageSchema.parse(req.body);
+    const { message, sessionId } = validatedData;
+
+    let chatSession;
+    if (sessionId) {
+      chatSession = await CineChatSession.findOne({ _id: sessionId, userId: req.userId! });
+    }
+
+    if (!chatSession) {
+      chatSession = new CineChatSession({
+        userId: req.userId!,
+        messages: [],
+        sentimentAura: 'neutral'
+      });
+    }
+
+    // Append user message
+    chatSession.messages.push({
+      role: 'user',
+      content: message,
+      timestamp: new Date()
+    });
+
+    // Prepare context for Gemini
+    const chatHistory = chatSession.messages.map(m => `${m.role === 'user' ? 'User' : 'Model'}: ${m.content}`).join('\n');
+
+    const systemInstruction = `You are CineBook's AI Cine-Concierge (AI קונסיירז' קולנועי).
+You recommend movies, answer questions about cinema, and chat with users.
+Keep replies helpful, engaging, relatively brief (under 3-4 sentences), and in Hebrew.
+You must respond with a JSON block containing the text answer and a sentiment/vibe label.
+The sentiment/vibe label should be one of: 'energetic', 'suspenseful', 'romantic', 'chill', 'neutral'.
+Select:
+- 'romantic' if user talks about romance, love, or emotional movies.
+- 'suspenseful' for horror, action, thriller, mystery.
+- 'energetic' for comedies, animations, high excitement.
+- 'chill' for slow drama, sci-fi, philosophy, relaxed conversations.
+- 'neutral' otherwise.
+
+Return ONLY this JSON format (no backticks, no extra text):
+{
+  "response": "Hebrew text recommendation or answer",
+  "sentiment": "energetic | suspenseful | romantic | chill | neutral"
+}`;
+
+    let aiResponseText = '';
+    let sentiment = 'neutral';
+
+    try {
+      const geminiResult = await callGemini(systemInstruction, chatHistory);
+      const cleaned = geminiResult.replace(/```json/g, '').replace(/```/g, '').trim();
+      const parsed = JSON.parse(cleaned);
+      aiResponseText = parsed.response || 'סליחה, אירעה שגיאה בעיבוד התשובה.';
+      sentiment = parsed.sentiment || 'neutral';
+    } catch (apiError) {
+      console.warn('[Cine-Concierge API] Gemini failed or rate-limited. Using fallback recommendation.');
+      // Local fallback keywords matching
+      const lowerMsg = message.toLowerCase();
+      if (lowerMsg.includes('אימה') || lowerMsg.includes('מפחיד') || lowerMsg.includes('מתח')) {
+        aiResponseText = 'אני ממליץ לך לצפות בסרט האימה החדש "לחישות באפילה" המוקרן כעת באולם 4. סרט מותח במיוחד!';
+        sentiment = 'suspenseful';
+      } else if (lowerMsg.includes('אהבה') || lowerMsg.includes('רומנט') || lowerMsg.includes('דרמה')) {
+        aiResponseText = 'אם בא לך משהו מרגש ורומנטי, כדאי לראות את "שקיעות סגולות" - דרמה רומנטית מקסימה שקיבלה ביקורות מצוינות.';
+        sentiment = 'romantic';
+      } else if (lowerMsg.includes('קומד') || lowerMsg.includes('מצחיק') || lowerMsg.includes('ילדים') || lowerMsg.includes('אנימצי')) {
+        aiResponseText = 'בשביל צחוק ואנרגיה טובה, אני ממליץ על קומדיית האנימציה "שובבים בחלל" - מצחיק בטירוף ומתאים לכל המשפחה!';
+        sentiment = 'energetic';
+      } else {
+        aiResponseText = 'שלום! אני הקונסיירז׳ הקולנועי שלך. אשמח להמליץ לך על סרטים מותאמים אישית. מה בא לך לראות היום? (דרמה, קומדיה, אימה, מדע בדיוני?)';
+        sentiment = 'neutral';
+      }
+    }
+
+    // Append model response
+    chatSession.messages.push({
+      role: 'model',
+      content: aiResponseText,
+      timestamp: new Date()
+    });
+    chatSession.sentimentAura = sentiment;
+    await chatSession.save();
+
+    return res.json({
+      success: true,
+      data: {
+        session: chatSession,
+        response: aiResponseText,
+        sentiment
+      }
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ success: false, errors: error.issues });
+    }
+    console.error('[Cine-Concierge API] Error sending chat message:', error);
+    return res.status(500).json({ success: false, message: 'Server error in chat' });
+  }
+});
+
+// ── Feature 2: AR Cinema Wayfinder Routes ──
+
+// @route   GET api/mcp/wayfinder/map/:venueId
+// @desc    Get points of interest (POIs) map for a venue (seeds default if none exists)
+router.get('/wayfinder/map/:venueId', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const { venueId } = req.params;
+
+    if (typeof venueId !== 'string' || !mongoose.Types.ObjectId.isValid(venueId)) {
+      return res.status(400).json({ success: false, message: 'Invalid venue ID format' });
+    }
+
+    let map = await CinemaMap.findOne({ venueId: new mongoose.Types.ObjectId(venueId) });
+
+    if (!map) {
+      // Seed default map POIs for this venue
+      map = new CinemaMap({
+        venueId: new mongoose.Types.ObjectId(venueId),
+        pois: [
+          { name: 'פופקורן ומזנון מהיר', type: 'buffet', coordinates: { x: 4.5, y: 2.0, z: 0.0 } },
+          { name: 'חדר שירותים מרכזי', type: 'restrooms', coordinates: { x: -6.2, y: 8.0, z: 0.0 } },
+          { name: 'אולם ההקרנה 4', type: 'hall', coordinates: { x: 0.0, y: 15.5, z: 1.2 } },
+          { name: 'יציאת חירום ראשית', type: 'exit', coordinates: { x: 12.0, y: 25.0, z: 0.0 } }
+        ]
+      });
+      await map.save();
+    }
+
+    return res.json({ success: true, data: map });
+  } catch (error) {
+    console.error('[AR-Wayfinder API] Error fetching cinema map:', error);
+    return res.status(500).json({ success: false, message: 'Server error fetching cinema map' });
+  }
+});
+
+// ── Feature 3: Aura-Match Social Circles Routes ──
+
+// Cosine Similarity Helper for local calculation
+function getCosineSimilarity(v1: number[], v2: number[]): number {
+  if (!v1 || !v2 || v1.length !== v2.length) return 0;
+  let dotProduct = 0;
+  let mA = 0;
+  let mB = 0;
+  for (let i = 0; i < v1.length; i++) {
+    const val1 = v1[i];
+    const val2 = v2[i];
+    if (val1 !== undefined && val2 !== undefined) {
+      dotProduct += val1 * val2;
+      mA += val1 * val1;
+      mB += val2 * val2;
+    }
+  }
+  if (mA === 0 || mB === 0) return 0;
+  return dotProduct / (Math.sqrt(mA) * Math.sqrt(mB));
+}
+
+// @route   GET api/mcp/aura/profile
+// @desc    Get user's Aura profile
+router.get('/aura/profile', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    let profile = await AuraProfile.findOne({ userId: req.userId! }).populate('userId', 'name email profileImage');
+    if (!profile) {
+      profile = new AuraProfile({
+        userId: req.userId!,
+        genreVector: [0.5, 0.5, 0.5, 0.5, 0.5],
+        auraColor: '#8A2BE2'
+      });
+      await profile.save();
+      profile = await profile.populate('userId', 'name email profileImage');
+    }
+    return res.json({ success: true, data: profile });
+  } catch (error) {
+    console.error('[Aura-Match API] Error getting profile:', error);
+    return res.status(500).json({ success: false, message: 'Server error getting Aura profile' });
+  }
+});
+
+// @route   POST api/mcp/aura/profile
+// @desc    Create or update user's Aura profile
+router.post('/aura/profile', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const profileSchema = z.object({
+      genreVector: z.array(z.number()).length(5),
+      auraColor: z.string().startsWith('#'),
+      isSearching: z.boolean().optional()
+    });
+
+    const validated = profileSchema.parse(req.body);
+    const { genreVector, auraColor, isSearching } = validated;
+
+    let profile = await AuraProfile.findOne({ userId: req.userId! });
+    if (!profile) {
+      profile = new AuraProfile({
+        userId: req.userId!,
+        genreVector,
+        auraColor,
+        isSearching: isSearching ?? false
+      });
+    } else {
+      profile.genreVector = genreVector;
+      profile.auraColor = auraColor;
+      if (isSearching !== undefined) {
+        profile.isSearching = isSearching;
+      }
+    }
+
+    await profile.save();
+    return res.json({ success: true, data: profile });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ success: false, errors: error.issues });
+    }
+    console.error('[Aura-Match API] Error updating profile:', error);
+    return res.status(500).json({ success: false, message: 'Server error updating Aura profile' });
+  }
+});
+
+// @route   POST api/mcp/aura/search
+// @desc    Toggle searching status and get matching profiles (using Cosine Similarity fallback)
+router.post('/aura/search', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const searchSchema = z.object({
+      isSearching: z.boolean()
+    });
+    const validated = searchSchema.parse(req.body);
+    const { isSearching } = validated;
+
+    // Update active user's status
+    let userProfile = await AuraProfile.findOne({ userId: req.userId! });
+    if (!userProfile) {
+      userProfile = new AuraProfile({
+        userId: req.userId!,
+        genreVector: [0.5, 0.5, 0.5, 0.5, 0.5],
+        auraColor: '#8A2BE2'
+      });
+    }
+    userProfile.isSearching = isSearching;
+    await userProfile.save();
+
+    if (!isSearching) {
+      return res.json({ success: true, message: 'Stopped searching', data: [] });
+    }
+
+    // Retrieve potential matches
+    const allSearchingProfiles = await AuraProfile.find({
+      userId: { $ne: req.userId! },
+      isSearching: true
+    }).populate('userId', 'name profileImage email');
+
+    // Rank by cosine similarity
+    const matches = allSearchingProfiles.map(p => {
+      const similarity = getCosineSimilarity(userProfile!.genreVector, p.genreVector);
+      return {
+        profile: p,
+        similarity
+      };
+    })
+    .filter(m => m.similarity > 0.4) // threshold
+    .sort((a, b) => b.similarity - a.similarity)
+    .slice(0, 5); // limit top 5
+
+    return res.json({ success: true, data: matches });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ success: false, errors: error.issues });
+    }
+    console.error('[Aura-Match API] Error searching matches:', error);
+    return res.status(500).json({ success: false, message: 'Server error matching Auras' });
+  }
+});
+
+// ── Feature 4: Haptic Cinematic Previews Routes ──
+
+// @route   GET api/mcp/haptics/timeline/:movieId
+// @desc    Get haptic timeline for a movie trailer (seeds defaults if none exists)
+router.get('/haptics/timeline/:movieId', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const { movieId } = req.params;
+    if (typeof movieId !== 'string') {
+      return res.status(400).json({ success: false, message: 'Invalid movie ID' });
+    }
+
+    let timeline = await MovieHaptics.findOne({ movieId });
+
+    if (!timeline) {
+      // Seed default timeline points
+      timeline = new MovieHaptics({
+        movieId,
+        hapticTimeline: [
+          { timeMs: 2000, type: 'light' },
+          { timeMs: 4500, type: 'medium' },
+          { timeMs: 8000, type: 'heavy' },
+          { timeMs: 12500, type: 'light' },
+          { timeMs: 16000, type: 'heavy' },
+          { timeMs: 20000, type: 'medium' },
+          { timeMs: 25000, type: 'success' }
+        ]
+      });
+      await timeline.save();
+    }
+
+    return res.json({ success: true, data: timeline });
+  } catch (error) {
+    console.error('[Movie-Haptics API] Error fetching haptics timeline:', error);
+    return res.status(500).json({ success: false, message: 'Server error fetching haptic timeline' });
   }
 });
 
