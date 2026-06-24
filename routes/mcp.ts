@@ -14,6 +14,10 @@ import CineChatSession from '../models/CineChatSession';
 import CinemaMap from '../models/CinemaMap';
 import AuraProfile from '../models/AuraProfile';
 import MovieHaptics from '../models/MovieHaptics';
+import CineQuizLobby from '../models/CineQuizLobby';
+import CineCollectible from '../models/CineCollectible';
+import SquadBooking from '../models/SquadBooking';
+import CinePrediction from '../models/CinePrediction';
 import User from '../models/User';
 import mongoose from 'mongoose';
 import fs from 'fs';
@@ -1270,6 +1274,379 @@ router.get('/haptics/timeline/:movieId', authMiddleware, async (req: AuthRequest
   } catch (error) {
     console.error('[Movie-Haptics API] Error fetching haptics timeline:', error);
     return res.status(500).json({ success: false, message: 'Server error fetching haptic timeline' });
+  }
+});
+
+// ── Feature 5: CineQuiz AI Arena Routes ──
+const createQuizSchema = z.object({
+  genres: z.array(z.string()).default(['Action', 'Drama']),
+});
+
+const joinQuizSchema = z.object({
+  lobbyToken: z.string().length(6),
+  name: z.string(),
+  avatar: z.string().optional(),
+});
+
+router.post('/quiz/create', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const validated = createQuizSchema.parse(req.body);
+    const { genres } = validated;
+
+    // Generate random 6-character uppercase token
+    const token = Math.random().toString(36).substring(2, 8).toUpperCase();
+
+    // Default fallback questions in Hebrew
+    let questions = [
+      {
+        questionText: 'מי ביים את הסרט "התחלה" (Inception)?',
+        options: ['כריסטופר נולאן', 'סטיבן ספילברג', 'קוונטין טרנטינו', 'ג׳יימס קמרון'],
+        correctAnswerIndex: 0,
+        points: 100,
+      },
+      {
+        questionText: 'איזה סרט זכה בפרס האוסקר לסרט הטוב ביותר בשנת 2020?',
+        options: ['1917', 'פרזיטים', 'ג׳וקר', 'היו זמנים בהוליווד'],
+        correctAnswerIndex: 1,
+        points: 100,
+      },
+      {
+        questionText: 'מי שיחק את תפקיד הג׳וקר בסרט "האביר האפל" (2008)?',
+        options: ['חואקין פיניקס', 'ג׳ארד לטו', 'הית׳ לדג׳ר', 'ג׳ק ניקולסון'],
+        correctAnswerIndex: 2,
+        points: 100,
+      },
+      {
+        questionText: 'מהו הסרט המכניס ביותר בכל הזמנים (ללא התאמה לאינפלציה)?',
+        options: ['נוקמים: סוף המשחק', 'טיטאניק', 'מלחמת הכוכבים: הכוח מתעורר', 'אוואטר'],
+        correctAnswerIndex: 3,
+        points: 100,
+      },
+      {
+        questionText: 'באיזה סרט מופיעה הדמות "לוק סקייווקר"?',
+        options: ['מלחמת הכוכבים', 'מסע בין כוכבים', 'שר הטבעות', 'הארי פוטר'],
+        correctAnswerIndex: 0,
+        points: 100,
+      }
+    ];
+
+    try {
+      const prompt = `Generate exactly 5 cinema trivia questions in Hebrew as a JSON array. Each question must have questionText (Hebrew), options (array of 4 Hebrew strings), correctAnswerIndex (integer 0-3), and points (integer, default 100). The questions should be about movie genres: ${genres.join(', ')}. Return ONLY JSON: [{ "questionText": string, "options": string[], "correctAnswerIndex": number, "points": number }]`;
+      const responseText = await callGemini(
+        'You are a cinema quiz generator. You return trivia questions in Hebrew as a strict JSON array.',
+        prompt
+      );
+      const cleaned = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+      const parsed = JSON.parse(cleaned);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        questions = parsed.map(q => ({
+          questionText: q.questionText,
+          options: q.options,
+          correctAnswerIndex: q.correctAnswerIndex,
+          points: q.points || 100
+        }));
+      }
+    } catch (apiError) {
+      console.warn('[CineQuiz API] Gemini failed to generate questions. Using premium defaults.');
+    }
+
+    const user = await User.findById(req.userId);
+    const creatorName = user ? user.name : 'שחקן';
+
+    const lobby = new CineQuizLobby({
+      lobbyToken: token,
+      players: [
+        {
+          userId: req.userId!,
+          name: creatorName,
+          score: 0,
+          ready: true,
+        },
+      ],
+      questions,
+      currentQuestionIndex: 0,
+      status: 'waiting',
+    });
+
+    await lobby.save();
+
+    return res.status(201).json({ success: true, data: lobby });
+  } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ success: false, errors: error.issues });
+    }
+    console.error('[CineQuiz API] Error creating quiz:', error);
+    return res.status(500).json({ success: false, message: 'Server error creating quiz' });
+  }
+});
+
+router.post('/quiz/join', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const validated = joinQuizSchema.parse(req.body);
+    const { lobbyToken, name, avatar } = validated;
+
+    const lobby = await CineQuizLobby.findOne({ lobbyToken: lobbyToken.toUpperCase() });
+    if (!lobby) {
+      return res.status(404).json({ success: false, message: 'חדר המשחק לא נמצא' });
+    }
+
+    if (lobby.status !== 'waiting') {
+      return res.status(400).json({ success: false, message: 'המשחק כבר התחיל' });
+    }
+
+    const userExists = lobby.players.some(p => p.userId.toString() === req.userId);
+    if (!userExists) {
+      lobby.players.push({
+        userId: new mongoose.Types.ObjectId(req.userId),
+        name,
+        score: 0,
+        ready: false,
+        ...(avatar ? { avatar } : {})
+      } as any);
+      await lobby.save();
+    }
+
+    return res.json({ success: true, data: lobby });
+  } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ success: false, errors: error.issues });
+    }
+    console.error('[CineQuiz API] Error joining quiz:', error);
+    return res.status(500).json({ success: false, message: 'Server error joining quiz' });
+  }
+});
+
+// ── Feature 6: CineCollect 3D Memorabilia Routes ──
+const unlockCollectibleSchema = z.object({
+  collectibleId: z.string(),
+  title: z.string(),
+  description: z.string().optional(),
+  rarity: z.enum(['common', 'rare', 'legendary']).default('common'),
+  modelUrl: z.string(),
+  colorGlow: z.string().default('#FF1464'),
+});
+
+router.get('/collectibles', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    let list = await CineCollectible.find({ userId: req.userId! });
+
+    // Seed default collectibles if none exist
+    if (list.length === 0) {
+      const defaults = [
+        {
+          userId: new mongoose.Types.ObjectId(req.userId!),
+          collectibleId: 'col-golden-ticket',
+          title: 'כרטיס הזהב הקולנועי',
+          description: 'כרטיס זהב יוקרתי המוענק לחברי מועדון פרימיום.',
+          rarity: 'legendary',
+          modelUrl: 'ticket',
+          colorGlow: '#E5FF00',
+        },
+        {
+          userId: new mongoose.Types.ObjectId(req.userId!),
+          collectibleId: 'col-projector',
+          title: 'מקרן רטרו 1920',
+          description: 'הולוגרמה של מקרן סרטים ישן ומכובד.',
+          rarity: 'rare',
+          modelUrl: 'projector',
+          colorGlow: '#0AEFFF',
+        },
+        {
+          userId: new mongoose.Types.ObjectId(req.userId!),
+          collectibleId: 'col-popcorn',
+          title: 'גביע פופקורן אינסופי',
+          description: 'גביע פופקורן מנצנץ לחובבי קולנוע אמיתיים.',
+          rarity: 'common',
+          modelUrl: 'popcorn',
+          colorGlow: '#FF1464',
+        }
+      ];
+
+      await CineCollectible.insertMany(defaults);
+      list = await CineCollectible.find({ userId: req.userId! });
+    }
+
+    return res.json({ success: true, data: list });
+  } catch (error) {
+    console.error('[CineCollect API] Error fetching collectibles:', error);
+    return res.status(500).json({ success: false, message: 'Server error fetching collectibles' });
+  }
+});
+
+router.post('/collectibles/unlock', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const validated = unlockCollectibleSchema.parse(req.body);
+    const { collectibleId, title, description, rarity, modelUrl, colorGlow } = validated;
+
+    let collectible = await CineCollectible.findOne({ userId: req.userId!, collectibleId });
+    if (collectible) {
+      return res.json({ success: true, message: 'כבר קיים באוסף', data: collectible });
+    }
+
+    collectible = new CineCollectible({
+      userId: req.userId!,
+      collectibleId,
+      title,
+      description,
+      rarity,
+      modelUrl,
+      colorGlow,
+    });
+
+    await collectible.save();
+
+    return res.status(201).json({ success: true, data: collectible });
+  } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ success: false, errors: error.issues });
+    }
+    console.error('[CineCollect API] Error unlocking collectible:', error);
+    return res.status(500).json({ success: false, message: 'Server error unlocking collectible' });
+  }
+});
+
+// ── Feature 7: CineShare Seating Room Routes ──
+const createSquadBookingSchema = z.object({
+  showtimeId: z.string(),
+  name: z.string(),
+});
+
+router.post('/squad-booking/create', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const validated = createSquadBookingSchema.parse(req.body);
+    const { showtimeId, name } = validated;
+
+    // Generate random 6-character room token
+    const token = Math.random().toString(36).substring(2, 8).toUpperCase();
+
+    // Assign a random glowing color to the creator
+    const colors = ['#FF1464', '#E5FF00', '#0AEFFF', '#8A2BE2', '#00FF66'];
+    const creatorColor = colors[Math.floor(Math.random() * colors.length)];
+
+    const squad = new SquadBooking({
+      squadToken: token,
+      showtimeId: new mongoose.Types.ObjectId(showtimeId),
+      creatorId: new mongoose.Types.ObjectId(req.userId),
+      members: [
+        {
+          userId: new mongoose.Types.ObjectId(req.userId),
+          name,
+          colorCode: creatorColor,
+        },
+      ],
+      lockedSeats: [],
+    });
+
+    await squad.save();
+
+    return res.status(201).json({ success: true, data: squad });
+  } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ success: false, errors: error.issues });
+    }
+    console.error('[SquadBooking API] Error creating room:', error);
+    return res.status(500).json({ success: false, message: 'Server error creating squad room' });
+  }
+});
+
+router.get('/squad-booking/:squadToken', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const { squadToken } = req.params;
+    if (typeof squadToken !== 'string') {
+      return res.status(400).json({ success: false, message: 'קוד חדר לא תקין' });
+    }
+    const squad = await SquadBooking.findOne({ squadToken: squadToken.toUpperCase() });
+    if (!squad) {
+      return res.status(404).json({ success: false, message: 'חדר קבוצתי לא נמצא' });
+    }
+
+    return res.json({ success: true, data: squad });
+  } catch (error) {
+    console.error('[SquadBooking API] Error fetching room:', error);
+    return res.status(500).json({ success: false, message: 'Server error fetching squad room' });
+  }
+});
+
+// ── Feature 8: CinePredict Box-Office Oracle Routes ──
+const submitPredictionSchema = z.object({
+  tmdbId: z.number(),
+  movieTitle: z.string(),
+  predictedOpeningWeekend: z.number(),
+  predictedRatingScore: z.number().min(0).max(100),
+  pointsStaked: z.number().nonnegative().default(0),
+});
+
+router.get('/predictions', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const predictions = await CinePrediction.find({ userId: req.userId! }).sort({ createdAt: -1 });
+    return res.json({ success: true, data: predictions });
+  } catch (error) {
+    console.error('[CinePredict API] Error fetching predictions:', error);
+    return res.status(500).json({ success: false, message: 'Server error fetching predictions' });
+  }
+});
+
+router.post('/predictions/submit', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const validated = submitPredictionSchema.parse(req.body);
+    const { tmdbId, movieTitle, predictedOpeningWeekend, predictedRatingScore, pointsStaked } = validated;
+
+    const user = await User.findById(req.userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'משתמש לא נמצא' });
+    }
+
+    if (user.loyaltyPoints < pointsStaked) {
+      return res.status(400).json({ success: false, message: 'אין מספיק נקודות נאמנות להימור זה' });
+    }
+
+    // Deduct points
+    if (pointsStaked > 0) {
+      user.loyaltyPoints -= pointsStaked;
+      user.loyaltyActivity.push({
+        action: `הימור קופות עבור ${movieTitle}`,
+        points: `-${pointsStaked}`,
+        date: new Date(),
+      });
+      await user.save();
+    }
+
+    let oracleResponseText = 'האורקל רשם את התחזית שלך. נדע בקרוב אם צדקת!';
+
+    try {
+      const response = await callGemini(
+        'You are the CinePredict Box-Office Oracle, a sarcastic, witty, and highly analytical movie critic. Answer in Hebrew. Analyze the user prediction and tell them if they are dreaming or if it is realistic.',
+        `סרט: "${movieTitle}". חיזוי פתיחה: $${predictedOpeningWeekend} מיליון. ציון רייטינג חזוי: ${predictedRatingScore}/100. תן ביקורת קצרה והומוריסטית בעברית על ההימור.`
+      );
+      if (response) oracleResponseText = response.trim();
+    } catch (apiError) {
+      console.warn('[CinePredict API] Gemini failed. Using default oracle note.');
+    }
+
+    const prediction = new CinePrediction({
+      userId: req.userId!,
+      tmdbId,
+      movieTitle,
+      predictedOpeningWeekend,
+      predictedRatingScore,
+      pointsStaked,
+      isResolved: false,
+      oracleResponseText,
+    });
+
+    await prediction.save();
+
+    return res.status(201).json({
+      success: true,
+      data: prediction,
+      userLoyaltyPoints: user.loyaltyPoints,
+    });
+  } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ success: false, errors: error.issues });
+    }
+    console.error('[CinePredict API] Error submitting prediction:', error);
+    return res.status(500).json({ success: false, message: 'Server error submitting prediction' });
   }
 });
 
