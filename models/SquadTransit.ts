@@ -1,33 +1,44 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
 export interface ISquadTransit extends Document {
-  squadId: mongoose.Types.ObjectId;
-  userId: mongoose.Types.ObjectId;
-  coordinates: {
+  squadId: mongoose.Types.ObjectId | string;
+  userId?: mongoose.Types.ObjectId | string;
+  coordinates?: {
     latitude: number;
     longitude: number;
   };
-  status: 'driving' | 'passenger' | 'arrived';
+  driverName?: string;
+  seatsAvailable?: number;
+  passengers?: string[];
+  pickupLocation?: string;
+  departureTime?: string;
+  costPerPerson?: number;
+  status: 'driving' | 'passenger' | 'arrived' | 'scheduled';
   createdAt: Date;
 }
 
 const SquadTransitSchema: Schema = new Schema({
-  squadId: { type: Schema.Types.ObjectId, ref: 'SquadSession', required: true },
-  userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+  squadId: { type: Schema.Types.Mixed, required: true },
+  userId: { type: Schema.Types.ObjectId, ref: 'User' },
   coordinates: {
-    latitude: { type: Number, required: true },
-    longitude: { type: Number, required: true }
+    latitude: { type: Number },
+    longitude: { type: Number },
   },
-  status: { 
-    type: String, 
-    enum: ['driving', 'passenger', 'arrived'], 
-    default: 'driving' 
+  driverName: { type: String },
+  seatsAvailable: { type: Number, default: 4 },
+  passengers: [{ type: String }],
+  pickupLocation: { type: String },
+  departureTime: { type: String },
+  costPerPerson: { type: Number, default: 0 },
+  status: {
+    type: String,
+    enum: ['driving', 'passenger', 'arrived', 'scheduled'],
+    default: 'scheduled',
   },
-  // Location entries expire after 3 hours (10800 seconds) for user privacy
-  createdAt: { type: Date, default: Date.now, expires: 10800 }
+  createdAt: { type: Date, default: Date.now, expires: 10800 },
 });
 
-// Compound index to quickly find squad coordinates
-SquadTransitSchema.index({ squadId: 1, userId: 1 });
+SquadTransitSchema.index({ squadId: 1 });
 
-export default mongoose.model<ISquadTransit>('SquadTransit', SquadTransitSchema);
+export const SquadTransit = mongoose.model<ISquadTransit>('SquadTransit', SquadTransitSchema);
+export default SquadTransit;
