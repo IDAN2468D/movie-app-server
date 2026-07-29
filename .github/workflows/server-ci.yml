@@ -20,13 +20,16 @@ jobs:
           cache-dependency-path: '**/package-lock.json'
 
       - name: Install dependencies
-        working-directory: ./server
-        run: npm ci
+        run: |
+          if [ -d "./server" ]; then cd ./server; fi
+          npm ci
 
       - name: Type Check
-        working-directory: ./server
-        run: npx tsc
+        run: |
+          if [ -d "./server" ]; then cd ./server; fi
+          npx tsc
 
       - name: Run Tests
-        working-directory: ./server
-        run: npm test
+        run: |
+          if [ -d "./server" ]; then cd ./server; fi
+          npm test
