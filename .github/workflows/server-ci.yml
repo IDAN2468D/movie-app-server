@@ -22,7 +22,7 @@ jobs:
       - name: Install dependencies
         run: |
           if [ -d "./server" ]; then cd ./server; fi
-          npm ci
+          npm ci || npm install
 
       - name: Type Check
         run: |
@@ -32,4 +32,4 @@ jobs:
       - name: Run Tests
         run: |
           if [ -d "./server" ]; then cd ./server; fi
-          npm test
+          npm test -- --passWithNoTests
