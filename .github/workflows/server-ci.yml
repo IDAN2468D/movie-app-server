@@ -27,7 +27,7 @@ jobs:
       - name: Type Check
         run: |
           if [ -d "./server" ]; then cd ./server; fi
-          npx tsc
+          npx tsc --noEmit
 
       - name: Run Tests
         run: |
