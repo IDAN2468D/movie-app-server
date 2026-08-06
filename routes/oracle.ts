@@ -33,7 +33,7 @@ router.get('/movie/:movieId', async (req: AuthRequest, res: Response) => {
 
     if (apiKey) {
       try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${apiKey}`;
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${apiKey}`;
         const systemPrompt = `You are a cinematic script trope analyst. Generate 3 engaging, creative binary (Yes/No) plot prediction questions for a viewer to bet on before or during the movie "${movieTitle}" (Genre: ${genres}).
 Return ONLY a JSON array of objects with fields:
 - id: string (e.g. "twist_1", "death_1")
